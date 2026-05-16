@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   pyspark-notebook:
     image: quay.io/jupyter/pyspark-notebook
