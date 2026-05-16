@@ -8,6 +8,19 @@ frontend app. It prepares boundary-safe bronze text segments, extracts one
 silver row per high-value connector match, and writes compact gold CSV outputs
 for notebook inspection.
 
+## Local Python Workflow
+
+UV is the expected local Python workflow for setup and tests. From the repo
+root, run:
+
+```bash
+uv sync
+uv run python -m unittest discover -s tests
+```
+
+The canonical test command uses Python's standard `unittest` runner because the
+current test suite does not require pytest-specific features.
+
 ## Runtime
 
 Docker is the expected PySpark/Jupyter runtime. Run the Jupyter Docker Stacks

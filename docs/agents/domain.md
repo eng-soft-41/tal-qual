@@ -8,7 +8,7 @@ This is a single-context repo.
 
 Current domain context material lives under `docs/context/`. Treat those files as the repo's domain context until a root `CONTEXT.md` exists.
 
-There is no ADR directory yet. If `docs/adr/` appears later, read ADRs that touch the area you're about to work in.
+ADRs live under `docs/adr/`. Read ADRs that touch the area you're about to work in.
 
 ## Before exploring, read these
 
