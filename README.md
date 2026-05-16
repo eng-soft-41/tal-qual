@@ -60,6 +60,36 @@ data/bronze/brwac_segments
 Bronze rows include `source_file`, `original_line_id`, `segment_id`,
 `text_original`, `text_normalized`, and `match_text`.
 
+## One-Shard MVP Validation
+
+Open `work/notebooks/03_one_shard_end_to_end_validation.ipynb` in the
+Dockerized Jupyter runtime to validate the full MVP pipeline against
+`data/raw/brwac-clean-1.txt.gz`.
+
+For comparison in constrained Docker runtimes, open
+`work/notebooks/03-1_one_shard_materialized_validation.ipynb`. It runs the same
+one-shard validation but writes and rereads bronze and silver Parquet between
+stages instead of keeping the large intermediate DataFrames cached. It also
+uses a low-parallelism local Spark profile so the materialized bronze read does
+not launch too many Python UDF workers for the notebook container.
+
+The notebook writes:
+
+```text
+data/bronze/brwac_segments
+data/silver/comparison_candidates
+outputs/candidates.csv
+outputs/connector_family_counts.csv
+outputs/pattern_type_counts.csv
+outputs/top_vehicles_global.csv
+outputs/top_vehicles_by_family.csv
+outputs/top_vehicles_by_pattern.csv
+outputs/sample_examples.csv
+```
+
+The generated `data/silver` and `outputs` directories are ignored by Git because
+they are derived from the local brWaC shard.
+
 ## Docs
 
 - [MVP PRD](.scratch/portuguese-similes-mvp/PRD.md)
