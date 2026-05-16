@@ -1,6 +1,6 @@
 # Phase A Validation Notebook
 
-Status: ready-for-agent
+Status: complete
 
 ## Parent
 
@@ -14,14 +14,14 @@ The notebook should make the refinement legible through tables and simple charts
 
 ## Acceptance criteria
 
-- [ ] The notebook can run in the project’s expected local workflow and load Phase A refined outputs.
-- [ ] The notebook shows before/after top vehicles using MVP `vehicle_normalized` and refined Vehicle Head lemma.
-- [ ] The notebook shows counts by `nlp_refinement_scope`.
-- [ ] The notebook shows counts by Structural Quality Bucket.
-- [ ] The notebook shows conservative Clean Common-Noun Vehicle rankings.
-- [ ] The notebook shows broader Chartable Vehicle rankings.
-- [ ] The notebook displays side-by-side examples with candidate text, pattern type, raw vehicle, Vehicle Phrase, Vehicle Head lemma, Vehicle Head POS, Structural Quality Bucket, and reject reason.
-- [ ] The notebook communicates that Phase A is structural refinement, not figurative/literal classification.
+- [x] The notebook can run in the project’s expected local workflow and load Phase A refined outputs.
+- [x] The notebook shows before/after top vehicles using MVP `vehicle_normalized` and refined Vehicle Head lemma.
+- [x] The notebook shows counts by `nlp_refinement_scope`.
+- [x] The notebook shows counts by Structural Quality Bucket.
+- [x] The notebook shows conservative Clean Common-Noun Vehicle rankings.
+- [x] The notebook shows broader Chartable Vehicle rankings.
+- [x] The notebook displays side-by-side examples with candidate text, pattern type, raw vehicle, Vehicle Phrase, Vehicle Head lemma, Vehicle Head POS, Structural Quality Bucket, and reject reason.
+- [x] The notebook communicates that Phase A is structural refinement, not figurative/literal classification.
 
 ## Blocked by
 
