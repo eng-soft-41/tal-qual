@@ -95,6 +95,10 @@ class RefinementTest(unittest.TestCase):
         self.assertEqual("noun_chunk", refined["vehicle_extraction_confidence"])
         self.assertEqual("fake_pt", refined["nlp_model_name"])
         self.assertEqual("0.1", refined["nlp_model_version"])
+        self.assertEqual("clean_nominal_vehicle", refined["structural_quality_bucket"])
+        self.assertTrue(refined["vehicle_is_clean_common_noun"])
+        self.assertTrue(refined["vehicle_is_chartable_vehicle"])
+        self.assertEqual("", refined["vehicle_reject_reason"])
 
     def test_bare_candidate_uses_pos_fallback_and_keeps_bare_scope(self):
         row = silver_row("candidate-2", "que_nem_bare")
@@ -121,6 +125,7 @@ class RefinementTest(unittest.TestCase):
         self.assertEqual("NOUN", refined["vehicle_head_pos"])
         self.assertEqual(2, refined["vehicle_phrase_length_tokens"])
         self.assertEqual("pos_fallback", refined["vehicle_extraction_confidence"])
+        self.assertEqual("clean_nominal_vehicle", refined["structural_quality_bucket"])
 
     def test_target_scope_without_noun_like_vehicle_keeps_empty_structure_fields(self):
         row = silver_row("candidate-3", "como_article")
@@ -145,6 +150,10 @@ class RefinementTest(unittest.TestCase):
         self.assertEqual("", refined["vehicle_head_pos"])
         self.assertEqual(0, refined["vehicle_phrase_length_tokens"])
         self.assertEqual("no_noun_like_vehicle", refined["vehicle_extraction_confidence"])
+        self.assertEqual("clausal_or_verbal_continuation", refined["structural_quality_bucket"])
+        self.assertFalse(refined["vehicle_is_clean_common_noun"])
+        self.assertFalse(refined["vehicle_is_chartable_vehicle"])
+        self.assertEqual("clausal_or_verbal_continuation", refined["vehicle_reject_reason"])
 
     def test_non_target_scope_is_carried_without_default_vehicle_extraction(self):
         row = silver_row("candidate-4", "como_se")
@@ -171,6 +180,86 @@ class RefinementTest(unittest.TestCase):
         self.assertEqual("not_in_first_slice_scope", refined["vehicle_extraction_confidence"])
         self.assertEqual("fake_pt", refined["nlp_model_name"])
         self.assertEqual("0.1", refined["nlp_model_version"])
+        self.assertEqual("not_in_first_slice_scope", refined["structural_quality_bucket"])
+        self.assertFalse(refined["vehicle_is_clean_common_noun"])
+        self.assertFalse(refined["vehicle_is_chartable_vehicle"])
+        self.assertEqual("not_in_first_slice_scope", refined["vehicle_reject_reason"])
+
+    def test_pronoun_numeric_and_empty_buckets_are_not_chartable(self):
+        pronoun = self.refine_with_single_head("candidate-pronoun", "que_nem_bare", "eu", "eu", "PRON")
+        numeric = self.refine_with_single_head("candidate-number", "igual_article", "três", "três", "NUM")
+        empty = silver_row("candidate-empty", "como_article")
+        empty["vehicle_raw"] = ""
+
+        empty_refined = refine_candidate_row(empty, parser=FakeParser(FakeDoc([], [])))
+
+        self.assert_quality(pronoun, "pronoun_vehicle", clean=False, chartable=False)
+        self.assertEqual("pronoun_vehicle", pronoun["vehicle_reject_reason"])
+        self.assert_quality(numeric, "numeric_vehicle", clean=False, chartable=False)
+        self.assertEqual("numeric_vehicle", numeric["vehicle_reject_reason"])
+        self.assert_quality(empty_refined, "empty_vehicle", clean=False, chartable=False)
+        self.assertEqual("empty_vehicle", empty_refined["vehicle_reject_reason"])
+
+    def test_proper_name_vehicle_is_chartable_but_not_clean_common_noun(self):
+        refined = self.refine_with_single_head("candidate-proper", "como_article", "Maria", "Maria", "PROPN")
+
+        self.assert_quality(refined, "proper_name_vehicle", clean=False, chartable=True)
+        self.assertEqual("proper_name_vehicle", refined["vehicle_reject_reason"])
+
+    def test_overly_long_and_url_or_symbol_noise_are_excluded(self):
+        long_phrase = self.refine_with_phrase(
+            "candidate-long",
+            "como_article",
+            "um caminho cheio de voltas grandes demais agora",
+            "caminho",
+            "caminho",
+            "NOUN",
+            7,
+        )
+        url_noise = self.refine_with_phrase(
+            "candidate-url",
+            "como_article",
+            "http://exemplo.com",
+            "http://exemplo.com",
+            "http://exemplo.com",
+            "NOUN",
+            1,
+        )
+
+        self.assert_quality(long_phrase, "overly_long_vehicle_phrase", clean=False, chartable=False)
+        self.assertEqual("overly_long_vehicle_phrase", long_phrase["vehicle_reject_reason"])
+        self.assert_quality(url_noise, "url_or_symbol_noise", clean=False, chartable=False)
+        self.assertEqual("url_or_symbol_noise", url_noise["vehicle_reject_reason"])
+
+    def test_parser_uncertain_bucket_is_used_when_parser_is_unavailable(self):
+        row = silver_row("candidate-parser", "como_article")
+
+        with patch("tal_qual.refinement.load_portuguese_parser", return_value=UnavailableFakeParser()):
+            refined = refine_candidate_row(row)
+
+        self.assert_quality(refined, "parser_uncertain", clean=False, chartable=False)
+        self.assertEqual("parser_uncertain", refined["vehicle_reject_reason"])
+
+    def test_role_or_classification_risk_is_marked_without_deleting_row(self):
+        row = silver_row("candidate-role", "como_article")
+        row["text_before"] = "Ele trabalha"
+        row["vehicle_raw"] = "advogado"
+        parser = FakeParser(
+            FakeDoc(
+                [
+                    FakeToken("como", "como", "SCONJ", 0),
+                    FakeToken("um", "um", "DET", 1),
+                    FakeToken("advogado", "advogado", "NOUN", 2),
+                ],
+                [FakeSpan("advogado", 2, 3, FakeToken("advogado", "advogado", "NOUN", 2))],
+            )
+        )
+
+        refined = refine_candidate_row(row, parser=parser)
+
+        self.assertEqual("candidate-role", refined["candidate_id"])
+        self.assert_quality(refined, "role_or_classification_risk", clean=False, chartable=False)
+        self.assertEqual("role_or_classification_risk", refined["vehicle_reject_reason"])
 
     def test_sample_debug_rows_are_deterministic_and_pattern_stratified(self):
         rows = [
@@ -224,6 +313,29 @@ class RefinementTest(unittest.TestCase):
 
         self.assertEqual([("target/path", "append")], writes)
 
+    def refine_with_single_head(self, candidate_id, pattern_type, text, lemma, pos):
+        return self.refine_with_phrase(candidate_id, pattern_type, text, text, lemma, pos, 1)
+
+    def refine_with_phrase(self, candidate_id, pattern_type, phrase, head_text, head_lemma, head_pos, length):
+        row = silver_row(candidate_id, pattern_type)
+        row["vehicle_raw"] = phrase
+        parser = FakeParser(
+            FakeDoc(
+                [
+                    FakeToken("como", "como", "SCONJ", 0),
+                    FakeToken("um", "um", "DET", 1),
+                    *[FakeToken(f"token-{index}", f"token-{index}", "ADJ", index) for index in range(2, 2 + length)],
+                ],
+                [FakeSpan(phrase, 2, 2 + length, FakeToken(head_text, head_lemma, head_pos, 2))],
+            )
+        )
+        return refine_candidate_row(row, parser=parser)
+
+    def assert_quality(self, refined, bucket, clean, chartable):
+        self.assertEqual(bucket, refined["structural_quality_bucket"])
+        self.assertEqual(clean, refined["vehicle_is_clean_common_noun"])
+        self.assertEqual(chartable, refined["vehicle_is_chartable_vehicle"])
+
 
 class FakeToken:
     def __init__(self, text, lemma, pos, index):
@@ -269,6 +381,12 @@ class FakeParser:
     def __call__(self, text):
         self.text = text
         return self.doc
+
+
+class UnavailableFakeParser:
+    model_name = "pt_core_news_sm"
+    model_version = ""
+    parser_unavailable = True
 
 
 if __name__ == "__main__":

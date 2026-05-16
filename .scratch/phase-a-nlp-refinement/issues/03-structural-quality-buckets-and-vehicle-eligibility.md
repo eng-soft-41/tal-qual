@@ -1,6 +1,6 @@
 # Structural Quality Buckets and Vehicle Eligibility
 
-Status: ready-for-agent
+Status: complete
 
 ## Parent
 
@@ -14,14 +14,14 @@ This slice should not classify candidates as figurative or literal. It should pr
 
 ## Acceptance criteria
 
-- [ ] Each refined row receives a `structural_quality_bucket`.
-- [ ] Each refined row receives a `vehicle_reject_reason` when it is not suitable for a default chart.
-- [ ] Pronoun, proper-name, numeric, empty, clausal/verbal, overly long, URL/symbol, parser-uncertain, and not-in-first-slice cases are represented in the bucket vocabulary.
-- [ ] Role or classification risk is detected heuristically and marked without deleting the row.
-- [ ] Clean Common-Noun Vehicle eligibility is stricter than Chartable Vehicle eligibility.
-- [ ] Proper-name vehicles can be preserved and chartable without being clean common-noun vehicles.
-- [ ] Pronouns, numerals, empty heads, URL-like spans, clausal/verbal continuations, and overly long phrases are excluded from default chart eligibility.
-- [ ] Focused tests cover each major bucket, both eligibility flags, and role/classification risk examples.
+- [x] Each refined row receives a `structural_quality_bucket`.
+- [x] Each refined row receives a `vehicle_reject_reason` when it is not suitable for a default chart.
+- [x] Pronoun, proper-name, numeric, empty, clausal/verbal, overly long, URL/symbol, parser-uncertain, and not-in-first-slice cases are represented in the bucket vocabulary.
+- [x] Role or classification risk is detected heuristically and marked without deleting the row.
+- [x] Clean Common-Noun Vehicle eligibility is stricter than Chartable Vehicle eligibility.
+- [x] Proper-name vehicles can be preserved and chartable without being clean common-noun vehicles.
+- [x] Pronouns, numerals, empty heads, URL-like spans, clausal/verbal continuations, and overly long phrases are excluded from default chart eligibility.
+- [x] Focused tests cover each major bucket, both eligibility flags, and role/classification risk examples.
 
 ## Blocked by
 

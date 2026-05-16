@@ -44,6 +44,16 @@ SCOPE_BY_PATTERN_TYPE: dict[str, str] = {
 OUT_OF_SCOPE = "not_in_first_slice_scope"
 TARGET_REFINEMENT_SCOPES = frozenset({"primary_nominal_article", "primary_nominal_bare"})
 NOUN_LIKE_POS = frozenset({"NOUN", "PROPN", "PRON", "NUM"})
+MAX_CLEAN_VEHICLE_TOKENS = 5
+_URL_OR_SYMBOL_RE = re.compile(r"https?://|www\.|[@#=<>]|[^\w\sÀ-ÖØ-öø-ÿ,.;:!?'-]", re.IGNORECASE)
+_ROLE_OR_CLASSIFICATION_RE = re.compile(
+    r"\b(?:"
+    r"trabalh\w*|atu\w*|serv\w*|"
+    r"conhecid\w*|chamad\w*|classificad\w*|definid\w*|"
+    r"considerad\w*|identificad\w*"
+    r")\b",
+    re.IGNORECASE,
+)
 _WHITESPACE_RE = re.compile(r"\s+")
 
 
@@ -69,6 +79,7 @@ def refine_candidate_row(row: Mapping[str, Any], parser: Any | None = None) -> d
         str(row.get("vehicle_raw", "")),
     )
     refined.update(_extract_vehicle_structure(refined, parser or load_portuguese_parser()))
+    refined.update(_assess_vehicle_quality(refined))
     return refined
 
 
@@ -106,6 +117,7 @@ def prepare_refined_dataframe(silver_df: Any) -> Any:
 
     from pyspark.sql.functions import col, concat_ws, lit, regexp_replace, struct, trim, udf, when
     from pyspark.sql.types import (
+        BooleanType,
         IntegerType,
         StringType,
         StructField,
@@ -128,6 +140,10 @@ def prepare_refined_dataframe(silver_df: Any) -> Any:
             StructField("vehicle_extraction_confidence", StringType(), nullable=False),
             StructField("nlp_model_name", StringType(), nullable=False),
             StructField("nlp_model_version", StringType(), nullable=False),
+            StructField("structural_quality_bucket", StringType(), nullable=False),
+            StructField("vehicle_is_clean_common_noun", BooleanType(), nullable=False),
+            StructField("vehicle_is_chartable_vehicle", BooleanType(), nullable=False),
+            StructField("vehicle_reject_reason", StringType(), nullable=False),
         ]
     )
     extract_vehicle_structure = udf(_vehicle_structure_for_spark_row, vehicle_structure_schema)
@@ -226,7 +242,7 @@ def _extract_vehicle_structure(refined: Mapping[str, Any], parser: Any) -> dict[
         base["vehicle_extraction_confidence"] = "not_in_first_slice_scope"
         return base
 
-    if isinstance(parser, _UnavailableParser):
+    if isinstance(parser, _UnavailableParser) or bool(getattr(parser, "parser_unavailable", False)):
         base["vehicle_extraction_confidence"] = "parser_unavailable"
         return base
 
@@ -314,6 +330,70 @@ def _empty_vehicle_structure(parser: Any) -> dict[str, Any]:
     }
 
 
+def _assess_vehicle_quality(refined: Mapping[str, Any]) -> dict[str, Any]:
+    bucket = _structural_quality_bucket(refined)
+    is_clean_common_noun = _is_clean_common_noun(refined, bucket)
+    is_chartable = is_clean_common_noun or bucket == "proper_name_vehicle"
+
+    return {
+        "structural_quality_bucket": bucket,
+        "vehicle_is_clean_common_noun": is_clean_common_noun,
+        "vehicle_is_chartable_vehicle": is_chartable,
+        "vehicle_reject_reason": "" if is_clean_common_noun else bucket,
+    }
+
+
+def _structural_quality_bucket(refined: Mapping[str, Any]) -> str:
+    confidence = str(refined.get("vehicle_extraction_confidence", ""))
+    vehicle_raw = str(refined.get("vehicle_raw", ""))
+    phrase = str(refined.get("vehicle_phrase_nlp", ""))
+    head = str(refined.get("vehicle_head", ""))
+    head_pos = str(refined.get("vehicle_head_pos", ""))
+    phrase_length = int(refined.get("vehicle_phrase_length_tokens", 0))
+
+    if confidence == "not_in_first_slice_scope":
+        return "not_in_first_slice_scope"
+    if confidence == "parser_unavailable":
+        return "parser_uncertain"
+    if not vehicle_raw.strip():
+        return "empty_vehicle"
+    if _URL_OR_SYMBOL_RE.search(vehicle_raw) or _URL_OR_SYMBOL_RE.search(phrase):
+        return "url_or_symbol_noise"
+    if not head:
+        return "clausal_or_verbal_continuation" if vehicle_raw.strip() else "empty_vehicle"
+    if head_pos == "PRON":
+        return "pronoun_vehicle"
+    if head_pos == "NUM":
+        return "numeric_vehicle"
+    if phrase_length > MAX_CLEAN_VEHICLE_TOKENS:
+        return "overly_long_vehicle_phrase"
+    if _has_role_or_classification_risk(refined):
+        return "role_or_classification_risk"
+    if head_pos == "PROPN":
+        return "proper_name_vehicle"
+    if head_pos == "NOUN":
+        return "clean_nominal_vehicle"
+    return "parser_uncertain"
+
+
+def _is_clean_common_noun(refined: Mapping[str, Any], bucket: str) -> bool:
+    return (
+        bucket == "clean_nominal_vehicle"
+        and str(refined.get("vehicle_head_pos", "")) == "NOUN"
+        and bool(str(refined.get("vehicle_head_lemma", "")).strip())
+        and 0 < int(refined.get("vehicle_phrase_length_tokens", 0)) <= MAX_CLEAN_VEHICLE_TOKENS
+    )
+
+
+def _has_role_or_classification_risk(refined: Mapping[str, Any]) -> bool:
+    context = _compact_text(
+        str(refined.get("text_before", "")),
+        str(refined.get("matched_text", "")),
+        str(refined.get("vehicle_raw", "")),
+    )
+    return bool(_ROLE_OR_CLASSIFICATION_RE.search(context))
+
+
 def _doc_tokens(doc: Any) -> list[Any]:
     return list(doc)
 
@@ -359,6 +439,10 @@ def _vehicle_structure_for_spark_row(row: Any) -> dict[str, Any]:
         "vehicle_extraction_confidence": str(refined["vehicle_extraction_confidence"]),
         "nlp_model_name": str(refined["nlp_model_name"]),
         "nlp_model_version": str(refined["nlp_model_version"]),
+        "structural_quality_bucket": str(refined["structural_quality_bucket"]),
+        "vehicle_is_clean_common_noun": bool(refined["vehicle_is_clean_common_noun"]),
+        "vehicle_is_chartable_vehicle": bool(refined["vehicle_is_chartable_vehicle"]),
+        "vehicle_reject_reason": str(refined["vehicle_reject_reason"]),
     }
 
 
