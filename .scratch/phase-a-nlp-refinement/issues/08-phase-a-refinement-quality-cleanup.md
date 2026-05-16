@@ -28,6 +28,9 @@ Use observed notebook examples as regression fixtures where possible.
 - `controverso` selected from `rapper controverso`, where the more useful structural head may be `rapper`.
 - uppercase or visually noisy heads such as `TOALHAS`.
 - punctuation-heavy or quote-heavy phrases that are currently being treated as clean common nouns.
+- quote-prefixed clean-ranking phrases from the full one-shard run, including `' espécie`, `' pessoa`, and `' problema`.
+- numeric or boilerplate-like phrases still counted as clean nouns when spaCy selects a noun head, including `100 empresas mais confiáveis` and `20 países`.
+- bare-pattern artifacts such as `sequer` appearing as a chartable `que_nem_bare` head.
 
 ## Blocked by
 
