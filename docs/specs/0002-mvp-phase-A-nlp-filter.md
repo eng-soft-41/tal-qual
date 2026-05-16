@@ -321,16 +321,17 @@ prepositional               3,313
 Counts by `structural_quality_bucket`:
 
 ```text
-clean_nominal_vehicle          27,926
+clean_nominal_vehicle          27,606
 not_in_first_slice_scope       18,036
-url_or_symbol_noise             4,488
-role_or_classification_risk     3,706
-pronoun_vehicle                 2,387
-proper_name_vehicle               957
-clausal_or_verbal_continuation    798
-overly_long_vehicle_phrase        408
+url_or_symbol_noise             4,700
+role_or_classification_risk     3,672
+pronoun_vehicle                 2,383
+proper_name_vehicle               948
+clausal_or_verbal_continuation    793
+overly_long_vehicle_phrase        398
+numeric_vehicle                   104
+parser_uncertain                  100
 empty_vehicle                      57
-numeric_vehicle                    34
 ```
 
 Top clean common-noun heads included `forma`, `espécie`, `pessoa`, `homem`,
@@ -341,9 +342,10 @@ full run found relatively few proper-name vehicles compared with common nouns.
 The validation should be interpreted as structural evidence only. It shows that
 Phase A can preserve row cardinality and create cleaner vehicle-head rankings,
 but it does not decide whether candidates are figurative or literal. The full
-run also exposed follow-up parser-quality cleanup candidates such as
-quote-prefixed clean-ranking phrases, unhelpful noun-chunk heads, and
-boilerplate-like web text.
+run now excludes quote and apostrophe artifacts, number-prefixed noun phrases,
+all-caps common-noun web noise, and known bare-connector artifacts from clean
+and chartable rankings. It also guards noun-chunk head selection when the parser
+selects a later modifier-like noun instead of an earlier structural noun.
 
 ## Success Criteria
 

@@ -52,6 +52,11 @@ TARGET_REFINEMENT_SCOPES = frozenset({"primary_nominal_article", "primary_nomina
 NOUN_LIKE_POS = frozenset({"NOUN", "PROPN", "PRON", "NUM"})
 MAX_CLEAN_VEHICLE_TOKENS = 5
 _URL_OR_SYMBOL_RE = re.compile(r"https?://|www\.|[@#=<>]|[^\w\sÀ-ÖØ-öø-ÿ,.;:!?'-]", re.IGNORECASE)
+_QUOTE_ARTIFACT_RE = re.compile(
+    r"(^['\"`´‘’“”]+)|(['\"`´‘’“”]+$)|('{2,})|(\w['\"`´‘’“”]{2,}\w)"
+)
+_NUMERIC_PREFIX_RE = re.compile(r"^\s*\d")
+_BARE_CONNECTOR_ARTIFACT_HEADS = frozenset({"sequer"})
 _ROLE_OR_CLASSIFICATION_RE = re.compile(
     r"\b(?:"
     r"trabalh\w*|atu\w*|serv\w*|"
@@ -420,9 +425,10 @@ def _vehicle_from_noun_chunks(doc: Any, vehicle_start: int) -> dict[str, Any] | 
         phrase_end = int(getattr(chunk, "end", phrase_start))
         phrase_tokens = _doc_tokens(doc)[phrase_start:phrase_end]
         phrase_text = _compact_text(*(str(getattr(token, "text", "")) for token in phrase_tokens))
+        head = _select_chunk_head(root, phrase_tokens)
         return _vehicle_result(
             phrase_text=phrase_text or str(getattr(chunk, "text", "")),
-            head=root,
+            head=head,
             phrase_length=len(phrase_tokens) or len(chunk),
             confidence="noun_chunk",
         )
@@ -494,6 +500,8 @@ def _structural_quality_bucket(refined: Mapping[str, Any]) -> str:
     phrase = str(refined.get("vehicle_phrase_nlp", ""))
     head = str(refined.get("vehicle_head", ""))
     head_pos = str(refined.get("vehicle_head_pos", ""))
+    head_lemma = str(refined.get("vehicle_head_lemma", ""))
+    scope = str(refined.get("nlp_refinement_scope", ""))
     phrase_length = int(refined.get("vehicle_phrase_length_tokens", 0))
 
     if confidence == "not_in_first_slice_scope":
@@ -502,16 +510,23 @@ def _structural_quality_bucket(refined: Mapping[str, Any]) -> str:
         return "parser_uncertain"
     if not vehicle_raw.strip():
         return "empty_vehicle"
-    if _URL_OR_SYMBOL_RE.search(vehicle_raw) or _URL_OR_SYMBOL_RE.search(phrase):
+    if (
+        _URL_OR_SYMBOL_RE.search(vehicle_raw)
+        or _URL_OR_SYMBOL_RE.search(phrase)
+        or _has_quote_or_punctuation_artifact(vehicle_raw, phrase, head)
+        or _is_uppercase_common_noun_noise(head, head_pos)
+    ):
         return "url_or_symbol_noise"
     if not head:
         return "clausal_or_verbal_continuation" if vehicle_raw.strip() else "empty_vehicle"
+    if head_pos == "NUM" or _has_numeric_prefix(vehicle_raw, phrase):
+        return "numeric_vehicle"
     if head_pos == "PRON":
         return "pronoun_vehicle"
-    if head_pos == "NUM":
-        return "numeric_vehicle"
     if phrase_length > MAX_CLEAN_VEHICLE_TOKENS:
         return "overly_long_vehicle_phrase"
+    if scope == "primary_nominal_bare" and head_lemma.lower() in _BARE_CONNECTOR_ARTIFACT_HEADS:
+        return "parser_uncertain"
     if _has_role_or_classification_risk(refined):
         return "role_or_classification_risk"
     if head_pos == "PROPN":
@@ -537,6 +552,31 @@ def _has_role_or_classification_risk(refined: Mapping[str, Any]) -> bool:
         str(refined.get("vehicle_raw", "")),
     )
     return bool(_ROLE_OR_CLASSIFICATION_RE.search(context))
+
+
+def _select_chunk_head(root: Any, phrase_tokens: list[Any]) -> Any:
+    root_index = int(getattr(root, "i", -1))
+    earlier_noun_tokens = [
+        token
+        for token in phrase_tokens
+        if str(getattr(token, "pos_", "")) == "NOUN" and int(getattr(token, "i", root_index)) < root_index
+    ]
+    if str(getattr(root, "pos_", "")) == "NOUN" and earlier_noun_tokens:
+        return earlier_noun_tokens[0]
+    return root
+
+
+def _has_quote_or_punctuation_artifact(*values: str) -> bool:
+    return any(_QUOTE_ARTIFACT_RE.search(value.strip()) for value in values if value.strip())
+
+
+def _has_numeric_prefix(*values: str) -> bool:
+    return any(_NUMERIC_PREFIX_RE.search(value) for value in values if value.strip())
+
+
+def _is_uppercase_common_noun_noise(head: str, head_pos: str) -> bool:
+    letters = [char for char in head if char.isalpha()]
+    return head_pos == "NOUN" and len(letters) > 1 and all(char.isupper() for char in letters)
 
 
 def _doc_tokens(doc: Any) -> list[Any]:

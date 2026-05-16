@@ -296,6 +296,94 @@ class RefinementTest(unittest.TestCase):
         self.assert_quality(url_noise, "url_or_symbol_noise", clean=False, chartable=False)
         self.assertEqual("url_or_symbol_noise", url_noise["vehicle_reject_reason"])
 
+    def test_quote_and_apostrophe_artifacts_are_excluded_from_vehicle_rankings(self):
+        quote_prefixed = self.refine_with_phrase(
+            "candidate-quote-prefix",
+            "como_article",
+            "' espécie",
+            "espécie",
+            "espécie",
+            "NOUN",
+            2,
+        )
+        malformed_apostrophe = self.refine_with_phrase(
+            "candidate-malformed-apostrophe",
+            "como_article",
+            "bunda mole''Ai",
+            "mole''Ai",
+            "mole''Ai",
+            "NOUN",
+            2,
+        )
+
+        self.assert_quality(quote_prefixed, "url_or_symbol_noise", clean=False, chartable=False)
+        self.assertEqual("url_or_symbol_noise", quote_prefixed["vehicle_reject_reason"])
+        self.assert_quality(malformed_apostrophe, "url_or_symbol_noise", clean=False, chartable=False)
+        self.assertEqual("url_or_symbol_noise", malformed_apostrophe["vehicle_reject_reason"])
+
+    def test_noun_chunk_uses_earlier_noun_when_parser_selects_modifier_like_head(self):
+        row = silver_row("candidate-rapper", "como_article")
+        row["vehicle_raw"] = "rapper controverso sem medo"
+        parser = FakeParser(
+            FakeDoc(
+                [
+                    FakeToken("como", "como", "SCONJ", 0),
+                    FakeToken("um", "um", "DET", 1),
+                    FakeToken("rapper", "rapper", "NOUN", 2),
+                    FakeToken("controverso", "controverso", "NOUN", 3),
+                ],
+                [FakeSpan("rapper controverso", 2, 4, FakeToken("controverso", "controverso", "NOUN", 3))],
+            )
+        )
+
+        refined = refine_candidate_row(row, parser=parser)
+
+        self.assertEqual("rapper controverso", refined["vehicle_phrase_nlp"])
+        self.assertEqual("rapper", refined["vehicle_head"])
+        self.assertEqual("rapper", refined["vehicle_head_lemma"])
+        self.assertEqual("clean_nominal_vehicle", refined["structural_quality_bucket"])
+
+    def test_number_prefixed_noun_phrases_are_not_clean_common_noun_vehicles(self):
+        refined = self.refine_with_phrase(
+            "candidate-number-prefix",
+            "como_article",
+            "100 empresas mais confiáveis",
+            "empresas",
+            "empresa",
+            "NOUN",
+            4,
+        )
+
+        self.assert_quality(refined, "numeric_vehicle", clean=False, chartable=False)
+        self.assertEqual("numeric_vehicle", refined["vehicle_reject_reason"])
+
+    def test_uppercase_common_noun_web_noise_is_excluded_but_proper_names_remain_chartable(self):
+        uppercase_noise = self.refine_with_single_head(
+            "candidate-uppercase-noise",
+            "como_article",
+            "TOALHAS",
+            "toalha",
+            "NOUN",
+        )
+        proper_name = self.refine_with_single_head(
+            "candidate-proper-name",
+            "como_article",
+            "NASA",
+            "NASA",
+            "PROPN",
+        )
+
+        self.assert_quality(uppercase_noise, "url_or_symbol_noise", clean=False, chartable=False)
+        self.assertEqual("url_or_symbol_noise", uppercase_noise["vehicle_reject_reason"])
+        self.assert_quality(proper_name, "proper_name_vehicle", clean=False, chartable=True)
+        self.assertEqual("proper_name_vehicle", proper_name["vehicle_reject_reason"])
+
+    def test_bare_connector_artifact_sequer_is_not_chartable(self):
+        refined = self.refine_with_single_head("candidate-sequer", "que_nem_bare", "sequer", "sequer", "NOUN")
+
+        self.assert_quality(refined, "parser_uncertain", clean=False, chartable=False)
+        self.assertEqual("parser_uncertain", refined["vehicle_reject_reason"])
+
     def test_parser_uncertain_bucket_is_used_when_parser_is_unavailable(self):
         row = silver_row("candidate-parser", "como_article")
 

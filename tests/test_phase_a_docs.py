@@ -34,7 +34,8 @@ class PhaseADocumentationTest(unittest.TestCase):
             "vehicle_is_clean_common_noun",
             "vehicle_is_chartable_vehicle",
             "58,797",
-            "27,926",
+            "27,606",
+            "quote and apostrophe artifacts",
             "Ground adjective extraction and LLM classification remain downstream",
         ]
 

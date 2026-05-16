@@ -313,23 +313,25 @@ prepositional               3,313
 Counts by Structural Quality Bucket:
 
 ```text
-clean_nominal_vehicle          27,926
+clean_nominal_vehicle          27,606
 not_in_first_slice_scope       18,036
-url_or_symbol_noise             4,488
-role_or_classification_risk     3,706
-pronoun_vehicle                 2,387
-proper_name_vehicle               957
-clausal_or_verbal_continuation    798
-overly_long_vehicle_phrase        408
+url_or_symbol_noise             4,700
+role_or_classification_risk     3,672
+pronoun_vehicle                 2,383
+proper_name_vehicle               948
+clausal_or_verbal_continuation    793
+overly_long_vehicle_phrase        398
+numeric_vehicle                   104
+parser_uncertain                  100
 empty_vehicle                      57
-numeric_vehicle                    34
 ```
 
 Top clean common-noun heads from the validation run included `forma`,
 `espécie`, `pessoa`, `homem`, `alternativa`, `processo`, `sistema`, `meio`,
-`opção`, and `empresa`. The run also exposed parser-quality cleanup candidates,
-including quote-prefixed phrases, occasional unhelpful noun-chunk heads, and
-web-noise phrases that should be tightened in a later cleanup slice.
+`opção`, and `empresa`. The cleanup rules exclude quote and apostrophe
+artifacts, number-prefixed noun phrases, all-caps common-noun web noise, and
+known bare-connector artifacts from clean and chartable vehicle rankings while
+keeping structurally usable proper names chartable.
 
 Ground adjective extraction and LLM classification remain downstream work.
 
