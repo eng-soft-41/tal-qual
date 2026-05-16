@@ -34,7 +34,7 @@ class ConnectorPattern:
 
 
 CONNECTOR_PATTERNS: tuple[ConnectorPattern, ...] = (
-    ConnectorPattern("como", "como_article", "nominal", re.compile(r"\bcomo\s+um(?:a|as|s)?\b")),
+    ConnectorPattern("como", "como_article", "nominal", re.compile(r"\bcomo\s+(?:um|uma|uns|umas)\b")),
     ConnectorPattern("como", "como_se", "clausal", re.compile(r"\bcomo\s+se\b")),
     ConnectorPattern("que_nem", "que_nem_bare", "bare", re.compile(r"\bque\s+nem\b")),
     ConnectorPattern("tal_qual", "tal_qual_bare", "bare", re.compile(r"\btal\s+qual\b")),
@@ -55,7 +55,7 @@ CONNECTOR_PATTERNS: tuple[ConnectorPattern, ...] = (
         "igualzinho",
         "igualzinho_article",
         "nominal",
-        re.compile(r"\bigualzinh(?:o|a|os|as)\s+um(?:a|as|s)?\b"),
+        re.compile(r"\bigualzinh(?:o|a|os|as)\s+(?:um|uma|uns|umas)\b"),
     ),
     ConnectorPattern(
         "igual",
@@ -63,7 +63,7 @@ CONNECTOR_PATTERNS: tuple[ConnectorPattern, ...] = (
         "prepositional",
         re.compile(r"\bigual\s+(?:a|ao|à|aos|às)\b"),
     ),
-    ConnectorPattern("igual", "igual_article", "nominal", re.compile(r"\bigual\s+um(?:a|as|s)?\b")),
+    ConnectorPattern("igual", "igual_article", "nominal", re.compile(r"\bigual\s+(?:um|uma|uns|umas)\b")),
 )
 
 

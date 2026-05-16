@@ -1,6 +1,6 @@
 # Focused Extraction Behavior Tests
 
-Status: ready-for-agent
+Status: complete
 
 ## Parent
 
@@ -12,17 +12,22 @@ Add lightweight tests for the externally visible behavior of the extraction logi
 
 ## Acceptance criteria
 
-- [ ] Tests cover `<END>` boundary handling so candidates do not cross segment boundaries.
-- [ ] Tests cover one-row-per-match behavior for multiple matches in one segment.
-- [ ] Tests verify that generic `como` is excluded while agreed narrow `como` variants are included.
-- [ ] Tests cover agreed `parecer`, `feito`, `igual`, `igualzinho`, `que nem`, and `tal qual` variants.
-- [ ] Tests verify that `vehicle_raw` starts after exact `matched_text`.
-- [ ] Tests cover left-context and right-context caps.
-- [ ] Tests cover simple `vehicle_normalized` behavior while preserving leading articles.
-- [ ] Tests verify deterministic candidate identity inputs or stable IDs for representative examples.
-- [ ] Tests use small sample strings or tiny temporary data, not the real brWaC shard.
+- [x] Tests cover `<END>` boundary handling so candidates do not cross segment boundaries.
+- [x] Tests cover one-row-per-match behavior for multiple matches in one segment.
+- [x] Tests verify that generic `como` is excluded while agreed narrow `como` variants are included.
+- [x] Tests cover agreed `parecer`, `feito`, `igual`, `igualzinho`, `que nem`, and `tal qual` variants.
+- [x] Tests verify that `vehicle_raw` starts after exact `matched_text`.
+- [x] Tests cover left-context and right-context caps.
+- [x] Tests cover simple `vehicle_normalized` behavior while preserving leading articles.
+- [x] Tests verify deterministic candidate identity inputs or stable IDs for representative examples.
+- [x] Tests use small sample strings or tiny temporary data, not the real brWaC shard.
 
 ## Blocked by
 
 - .scratch/portuguese-similes-mvp/issues/03-narrow-connector-candidate-extraction.md
 
+## Notes
+
+- Added focused in-memory behavior coverage around bronze `<END>` splitting plus silver extraction.
+- Expanded connector variant tests for the agreed narrow `como`, `parecer`, `feito`, `igual`, `igualzinho`, `que nem`, and `tal qual` forms.
+- Fixed the explicit article regexes so `uns` variants are matched for `como`, `igual`, and `igualzinho`.
