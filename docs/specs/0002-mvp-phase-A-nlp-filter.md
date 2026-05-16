@@ -10,8 +10,8 @@ silver candidate dataset, preserves silver candidate identity, and adds NLP
 fields for vehicle structure, structural quality, and chart eligibility.
 
 The first implementation slice focuses on vehicle structure refinement. Ground
-adjective extraction can be added later inside Phase A after vehicle fields are
-stable.
+adjective extraction and LLM classification remain downstream work after
+vehicle fields are stable.
 
 ## Non-Goals
 
@@ -252,7 +252,7 @@ Write compact CSV summaries under `outputs/`:
 ```text
 outputs/phase_a_scope_counts.csv
 outputs/phase_a_quality_bucket_counts.csv
-outputs/phase_a_top_common_noun_vehicle_heads.csv
+outputs/phase_a_top_clean_common_noun_heads.csv
 outputs/phase_a_top_chartable_vehicle_heads.csv
 outputs/phase_a_top_vehicle_heads_by_pattern.csv
 outputs/phase_a_refinement_examples.csv
@@ -260,10 +260,10 @@ outputs/phase_a_refinement_examples.csv
 
 ## Phase A Validation Notebook
 
-Add a notebook for validation and presentation:
+Use the Phase A notebook for validation and presentation:
 
 ```text
-notebooks/04_phase_a_nlp_refinement_validation.ipynb
+notebooks/04_phase_a_validation.ipynb
 ```
 
 The notebook should show:
@@ -290,6 +290,60 @@ vehicle_reject_reason
 
 The notebook is the validation and storytelling surface. The Parquet and CSV
 outputs are the durable data contract for future phases.
+
+To run the notebook in the Dockerized PySpark runtime, set
+`TAL_QUAL_PHASE_A_TIER=sample_debug` for fast inspection or
+`TAL_QUAL_PHASE_A_TIER=one_shard_refined` for the full one-shard acceptance
+tier. The notebook writes or loads `data/gold/refined_candidates_nlp`, writes
+the Phase A CSV summaries, and rejects stale refined outputs created without
+the active spaCy parser model.
+
+## Full One-Shard Validation Results
+
+The completed `one_shard_refined` validation run used parser model
+`core_news_sm 3.8.0`, ran through `notebooks/04_phase_a_validation.ipynb`, and
+preserved one row per silver candidate:
+
+```text
+silver candidate rows   58,797
+refined candidate rows  58,797
+```
+
+Counts by `nlp_refinement_scope`:
+
+```text
+primary_nominal_article    36,241
+clausal                    14,723
+primary_nominal_bare        4,520
+prepositional               3,313
+```
+
+Counts by `structural_quality_bucket`:
+
+```text
+clean_nominal_vehicle          27,926
+not_in_first_slice_scope       18,036
+url_or_symbol_noise             4,488
+role_or_classification_risk     3,706
+pronoun_vehicle                 2,387
+proper_name_vehicle               957
+clausal_or_verbal_continuation    798
+overly_long_vehicle_phrase        408
+empty_vehicle                      57
+numeric_vehicle                    34
+```
+
+Top clean common-noun heads included `forma`, `espécie`, `pessoa`, `homem`,
+`alternativa`, `processo`, `sistema`, `meio`, `opção`, and `empresa`.
+Chartable vehicle-head results were nearly identical at the top because the
+full run found relatively few proper-name vehicles compared with common nouns.
+
+The validation should be interpreted as structural evidence only. It shows that
+Phase A can preserve row cardinality and create cleaner vehicle-head rankings,
+but it does not decide whether candidates are figurative or literal. The full
+run also exposed follow-up parser-quality cleanup candidates such as
+quote-prefixed clean-ranking phrases, unhelpful noun-chunk heads, and
+boilerplate-like web text.
 
 ## Success Criteria
 

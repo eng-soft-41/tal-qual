@@ -206,9 +206,137 @@ Observed limitations from that run:
 - Frontend visualization is downstream context only; this MVP validates the
   extraction pipeline and inspectable outputs.
 
+## Phase A NLP Refinement Layer
+
+Phase A is a post-Spark NLP Refinement Layer. It reads the MVP silver candidate
+dataset at `data/silver/comparison_candidates`, preserves one row per silver
+candidate, and writes additional structural vehicle fields for analysis. It
+does not mutate the silver output and does not classify candidates as
+figurative or literal.
+
+Phase A uses spaCy Portuguese after Spark has reduced the corpus to candidate
+rows. The first refinement slice extracts a Vehicle Phrase and Vehicle Head
+where possible, assigns a Structural Quality Bucket, and separates conservative
+Clean Common-Noun Vehicles from broader Chartable Vehicles.
+
+Main refined fields:
+
+```text
+nlp_refinement_scope
+nlp_parse_text
+vehicle_phrase_nlp
+vehicle_head
+vehicle_head_lemma
+vehicle_head_pos
+vehicle_phrase_length_tokens
+vehicle_extraction_confidence
+structural_quality_bucket
+vehicle_is_clean_common_noun
+vehicle_is_chartable_vehicle
+vehicle_reject_reason
+nlp_model_name
+nlp_model_version
+```
+
+`nlp_refinement_scope` records whether a row belongs to
+`primary_nominal_article`, `primary_nominal_bare`, `clausal`, or
+`prepositional` refinement scope. `vehicle_phrase_nlp` is the readable
+syntactic phrase used for inspection. `vehicle_head` and `vehicle_head_lemma`
+are the preferred aggregation units for refined vehicle charts.
+`structural_quality_bucket` describes syntactic usability, not meaning.
+`vehicle_is_clean_common_noun` is the conservative noun-only chart flag;
+`vehicle_is_chartable_vehicle` is broader and can include selected proper
+names while still excluding pronouns, numerals, empty heads, URL or symbol
+noise, verbal continuations, and overly long phrases.
+
+Phase A supports two run tiers:
+
+```text
+TAL_QUAL_PHASE_A_TIER=sample_debug
+TAL_QUAL_PHASE_A_TIER=one_shard_refined
+```
+
+`sample_debug` runs a deterministic, pattern-stratified sample for quick
+inspection. `one_shard_refined` runs every row in the validated one-shard
+silver dataset and is the Phase A acceptance tier.
+
+Open `work/notebooks/04_phase_a_validation.ipynb` in the Dockerized Jupyter
+runtime to load or run Phase A outputs. The notebook compares MVP
+`vehicle_normalized` rankings with refined `vehicle_head_lemma` rankings,
+shows scope and quality-bucket counts, and displays side-by-side raw and
+refined examples.
+
+For a non-interactive sample-debug run:
+
+```bash
+docker run --rm \
+  -e TAL_QUAL_PHASE_A_TIER=sample_debug \
+  -e TAL_QUAL_PHASE_A_LOAD_EXISTING_REFINED=0 \
+  -v "$PWD":/home/jovyan/work \
+  -w /home/jovyan/work \
+  quay.io/jupyter/pyspark-notebook \
+  bash -lc 'python -m pip install -e /home/jovyan/work && jupyter nbconvert --to notebook --execute notebooks/04_phase_a_validation.ipynb --ExecutePreprocessor.timeout=3600 --output 04_phase_a_validation.executed.ipynb'
+```
+
+For the full one-shard tier, use `TAL_QUAL_PHASE_A_TIER=one_shard_refined`.
+
+Phase A writes the durable Refined Candidate Dataset to:
+
+```text
+data/gold/refined_candidates_nlp
+```
+
+It also writes compact CSV summaries:
+
+```text
+outputs/phase_a_scope_counts.csv
+outputs/phase_a_quality_bucket_counts.csv
+outputs/phase_a_top_clean_common_noun_heads.csv
+outputs/phase_a_top_chartable_vehicle_heads.csv
+outputs/phase_a_top_vehicle_heads_by_pattern.csv
+outputs/phase_a_refinement_examples.csv
+```
+
+The full one-shard Phase A validation run used parser model
+`core_news_sm 3.8.0`, preserved row cardinality, and produced `58,797` refined
+rows from `58,797` silver candidate rows.
+
+Counts by refinement scope:
+
+```text
+primary_nominal_article    36,241
+clausal                    14,723
+primary_nominal_bare        4,520
+prepositional               3,313
+```
+
+Counts by Structural Quality Bucket:
+
+```text
+clean_nominal_vehicle          27,926
+not_in_first_slice_scope       18,036
+url_or_symbol_noise             4,488
+role_or_classification_risk     3,706
+pronoun_vehicle                 2,387
+proper_name_vehicle               957
+clausal_or_verbal_continuation    798
+overly_long_vehicle_phrase        408
+empty_vehicle                      57
+numeric_vehicle                    34
+```
+
+Top clean common-noun heads from the validation run included `forma`,
+`espécie`, `pessoa`, `homem`, `alternativa`, `processo`, `sistema`, `meio`,
+`opção`, and `empresa`. The run also exposed parser-quality cleanup candidates,
+including quote-prefixed phrases, occasional unhelpful noun-chunk heads, and
+web-noise phrases that should be tightened in a later cleanup slice.
+
+Ground adjective extraction and LLM classification remain downstream work.
+
 ## Docs
 
 - [MVP PRD](.scratch/portuguese-similes-mvp/PRD.md)
+- [Phase A spec](docs/specs/0002-mvp-phase-A-nlp-filter.md)
 - [Implementation issues](.scratch/portuguese-similes-mvp/issues)
 - [Specs](docs/specs)
 - [Context](docs/context)
