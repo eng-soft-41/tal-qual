@@ -42,6 +42,24 @@ The tracked sample is intentionally tiny. The real brWaC shards belong under
 `data/raw/`, which is ignored by Git so a clean checkout can mount a local data
 directory without committing corpus files.
 
+## Bronze Preparation
+
+Open `work/notebooks/02_bronze_text_preparation.ipynb` in the same Dockerized
+Jupyter runtime to prepare boundary-safe bronze text segments from a local brWaC
+shard.
+
+The notebook reads gzipped text from `data/raw/brwac-clean-1.txt.gz`, splits literal
+`<END>` markers before later extraction work, removes empty segments, preserves
+the source segment text, creates whitespace-normalized text plus lowercase
+accent-preserving match text, and writes Parquet output to:
+
+```text
+data/bronze/brwac_segments
+```
+
+Bronze rows include `source_file`, `original_line_id`, `segment_id`,
+`text_original`, `text_normalized`, and `match_text`.
+
 ## Docs
 
 - [MVP PRD](.scratch/portuguese-similes-mvp/PRD.md)

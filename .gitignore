@@ -6,5 +6,6 @@ __pycache__/
 
 ## Project
 data/raw
+data/bronze
 
 docs/specs/draft
