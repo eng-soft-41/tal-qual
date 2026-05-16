@@ -22,6 +22,7 @@ This issue proves that Phase A works end to end over the MVP output rather than 
 - [ ] Observed counts by Structural Quality Bucket are recorded.
 - [ ] Top common-noun and chartable vehicle-head examples are recorded.
 - [ ] Known limitations from the full run are documented without overclaiming figurative/literal classification.
+- [ ] Parser-quality cleanup candidates are recorded for `.scratch/phase-a-nlp-refinement/issues/08-phase-a-refinement-quality-cleanup.md`.
 
 ## Blocked by
 

@@ -55,6 +55,12 @@ class PhaseAValidationNotebookTest(unittest.TestCase):
         self.assertIn("parser_unavailable", self.source)
         self.assertIn("Missing Phase A spaCy parser", self.source)
 
+    def test_notebook_reruns_stale_refined_outputs_from_missing_parser_runs(self):
+        self.assertIn("loaded_refined_output_matches_parser", self.source)
+        self.assertIn("primary_nominal_article", self.source)
+        self.assertIn("primary_nominal_bare", self.source)
+        self.assertIn("reran_{RUN_TIER}_because_existing_parser_output_was_stale", self.source)
+
 
 if __name__ == "__main__":
     unittest.main()
