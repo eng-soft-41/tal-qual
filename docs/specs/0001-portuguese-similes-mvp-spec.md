@@ -4,7 +4,9 @@
 
 This MVP adapts the idea behind The Pudding’s simile analysis to Brazilian Portuguese, but with a smaller and more feasible scope for a short Big Data capstone.
 
-The system uses **Apache Spark / PySpark** to scan a Portuguese text corpus and extract **candidate explicit comparisons** based on connector patterns such as:
+The system uses **Apache Spark / PySpark** to scan one full compressed brWaC
+shard and extract **candidate explicit comparisons** based on narrow connector
+patterns such as:
 
 ```text
 como um / como uma
@@ -16,7 +18,10 @@ parece um / parece uma
 feito um / feito uma
 ```
 
-The MVP does **not** include NLP filtering or LLM classification. It is focused on proving that Spark can process the corpus, extract useful candidates, and generate datasets for visual exploration.
+The MVP does **not** include NLP filtering, LLM classification, or a frontend
+application. It is focused on proving that Spark can process a meaningful corpus
+tier, extract useful candidates, and generate inspectable datasets for notebook
+analysis. Frontend visualization remains downstream context.
 
 ---
 
@@ -26,7 +31,8 @@ This project satisfies the capstone requirement because:
 
 - **Apache Spark** is the main processing tool.
 - The problem is typical of Big Data text processing.
-- The architecture can scale from a small sample to a larger corpus.
+- The architecture runs a tiny sample sanity check and a required one-shard brWaC
+  validation.
 - The project demonstrates **Volume** and **Variety**:
   - Volume: large-scale Portuguese text corpus.
   - Variety: web text from multiple domains and writing styles.
@@ -96,6 +102,8 @@ The MVP intentionally excludes:
 - Tenor / ground / vehicle semantic extraction.
 - Metaphor detection.
 - Human review interface.
+- Frontend visualization app implementation.
+- Frontend-ready JSON contracts.
 - Real-time processing.
 - HDFS integration, unless time allows.
 - Production-grade web application.
@@ -108,7 +116,8 @@ These can be tested in later phases.
 
 ### Runtime
 
-Use **Jupyter Docker Stacks** with a PySpark image:
+Docker is the expected runtime. Use **Jupyter Docker Stacks** with a PySpark
+image:
 
 ```text
 quay.io/jupyter/pyspark-notebook
@@ -149,25 +158,32 @@ http://localhost:4040
 ## 7. Suggested Project Structure
 
 ```text
-portuguese-simile-explorer/
+tal-qual/
 ├── data/
 │   ├── raw/
-│   │   └── brwac-clean-1.txt
-│   │       ...
+│   │   └── brwac-clean-1.txt.gz
 │   ├── bronze/
-│   ├── silver/
-│   └── gold/
-│   └── 01_mvp_candidate_extraction.ipynb
+│   │   └── brwac_segments/
+│   └── silver/
+│       └── comparison_candidates/
+├── notebooks/
+│   ├── 01_pyspark_smoke_run.ipynb
+│   ├── 02_bronze_text_preparation.ipynb
+│   ├── 03_one_shard_end_to_end_validation.ipynb
+│   └── 03-1_one_shard_materialized_validation.ipynb
 ├── outputs/
 │   ├── candidates.csv
-│   ├── connector_counts.csv
-│   ├── top_vehicle_raw.csv
+│   ├── connector_family_counts.csv
+│   ├── pattern_type_counts.csv
+│   ├── top_vehicles_global.csv
+│   ├── top_vehicles_by_family.csv
+│   ├── top_vehicles_by_pattern.csv
 │   └── sample_examples.csv
+├── src/tal_qual/
 ├── README.md
-├── docs/
-│   ├── specs/
-│   └── context/
-└── README.md
+└── docs/
+    ├── specs/
+    └── context/
 ```
 
 ---
@@ -176,9 +192,13 @@ portuguese-simile-explorer/
 
 ### MVP dataset
 
-Dataset is located at `data/raw`. See `data/raw-file-names.txt` for a list of all files names.
+The required MVP corpus tier is one full compressed brWaC shard:
 
-Start with a small local Portuguese text sample:
+```text
+data/raw/brwac-clean-1.txt.gz
+```
+
+Start with the tracked tiny local Portuguese text sample only as a sanity check:
 
 Each line can be one sentence, paragraph, or document fragment.
 
@@ -195,7 +215,8 @@ O barulho parecia uma tempestade.
 
 ### Later dataset
 
-After validating the MVP, the same pipeline can be tested on a larger subset from brWaC or another Portuguese corpus.
+After validating the MVP, the same pipeline can be tested on multiple brWaC
+shards or another Portuguese corpus.
 
 The important architectural point is that the pipeline starts small but is designed to scale.
 
@@ -239,29 +260,32 @@ No transformations.
 
 ### 10.2 Bronze Layer
 
-Minimally cleaned text.
+Boundary-safe text segments.
 
 Fields:
 
 ```text
-document_id
-line_id
+source_file
+original_line_id
+segment_id
 text_original
 text_normalized
+match_text
 ```
 
 Transformations:
 
-- Remove empty lines.
+- Split literal `<END>` markers before extraction.
+- Remove empty segments.
 - Trim whitespace.
 - Normalize repeated spaces.
 - Preserve original text.
-- Create lowercase version only for matching.
+- Create lowercase, accent-preserving match text.
 
 Output:
 
 ```text
-data/bronze/text_clean.parquet
+data/bronze/brwac_segments
 ```
 
 ---
@@ -273,78 +297,100 @@ Extracted comparison candidates.
 Fields:
 
 ```text
+source_file
+original_line_id
+segment_id
 candidate_id
-document_id
-line_id
-connector
+connector_family
 pattern_type
-text_before
+comparison_form
 matched_text
-text_after
-candidate_full_text
+text_before
 vehicle_raw
+vehicle_normalized
+candidate_full_text
 char_start
 char_end
 ```
 
 Notes:
 
-- `vehicle_raw` is a rough phrase after the connector.
-- No NLP normalization is performed in the MVP.
-- No figurative/literal label is produced in the MVP.
+- One row is emitted per connector match, not per input line or segment.
+- `connector_family`, `pattern_type`, `comparison_form`, and `matched_text`
+  replace the older ambiguous `connector` field.
+- `matched_text` is the exact connector phrase from the normalized segment.
+- `vehicle_raw` starts immediately after `matched_text`.
+- `vehicle_normalized` lowercases, collapses whitespace, and trims surrounding
+  punctuation while preserving leading Portuguese articles.
+- `text_before` stores up to 80 characters of left context.
+- Right context stops at punctuation, `<END>`, or 120 characters.
+- `candidate_id` is deterministic from provenance, offsets, pattern type, and
+  matched text.
+- `char_start` and `char_end` are zero-based offsets in normalized segment text;
+  `char_end` is exclusive.
 
 Output:
 
 ```text
-data/silver/comparison_candidates.parquet
+data/silver/comparison_candidates
 outputs/candidates.csv
 ```
+
+`outputs/candidates.csv` is a deterministic compact sample, not the full silver
+dataset.
 
 ---
 
 ### 10.4 Gold Layer
 
-Visualization-ready aggregation datasets.
+Compact aggregation datasets for inspection.
 
 Datasets:
 
 ```text
-connector_counts.csv
+connector_family_counts.csv
 pattern_type_counts.csv
-top_vehicle_raw.csv
+top_vehicles_global.csv
+top_vehicles_by_family.csv
+top_vehicles_by_pattern.csv
 sample_examples.csv
 ```
 
 Output:
 
 ```text
-data/gold/
 outputs/
 ```
+
+Vehicle outputs use `vehicle_normalized` and include occurrence counts. The
+vehicle-ranking outputs also include distinct candidate text counts where useful
+to expose repeated boilerplate.
 
 ---
 
 ## 11. Connector Patterns
 
-Use simple regex-based rules.
+Use simple regex-based rules. Generic `como` is intentionally excluded.
 
-```python
-CONNECTOR_PATTERNS = {
-    "como_um_uma": r"\\bcomo\\s+(um|uma)\\b",
-    "como_se": r"\\bcomo\\s+se\\b",
-    "tal_qual": r"\\btal\\s+qual\\b",
-    "que_nem": r"\\bque\\s+nem\\b",
-    "igual_a": r"\\bigual\\s+(a|ao|à|aos|às)\\b",
-    "parece_um_uma": r"\\bparece\\s+(um|uma)\\b",
-    "feito_um_uma": r"\\bfeito\\s+(um|uma)\\b",
-}
+```text
+connector_family  pattern_type              comparison_form  matched forms
+como              como_article              nominal          como um / uma / uns / umas
+como              como_se                   clausal          como se
+que_nem           que_nem_bare              bare             que nem
+tal_qual          tal_qual_bare             bare             tal qual
+parecer           parecer_article           nominal          parece / parecia / pareceu + um / uma
+feito             feito_article             nominal          feito um, feita uma, feitos uns, feitas umas
+igual             igual_preposition         prepositional    igual a / ao / à / aos / às
+igual             igual_article             nominal          igual um / uma / uns / umas
+igualzinho        igualzinho_preposition    prepositional    igualzinho variants + a / ao / à / aos / às
+igualzinho        igualzinho_article        nominal          igualzinho variants + um / uma / uns / umas
 ```
 
 For extraction, use a limited text window after the connector:
 
 ```text
 up to punctuation: . , ! ? ; :
-or up to 80–120 characters
+or up to 120 characters
 ```
 
 This keeps candidate phrases readable and avoids capturing entire paragraphs.
@@ -355,108 +401,73 @@ This keeps candidate phrases readable and avoids capturing entire paragraphs.
 
 ### Step 1 — Start Spark
 
-```python
-from pyspark.sql import SparkSession
+Open `work/notebooks/03_one_shard_end_to_end_validation.ipynb` in the Dockerized
+Jupyter runtime, or execute it with `nbconvert`:
 
-spark = (
-    SparkSession.builder
-    .appName("Portuguese Simile Candidate Explorer MVP")
-    .master("local[*]")
-    .getOrCreate()
-)
-
-spark
+```bash
+docker run --rm \
+  -v "$PWD":/home/jovyan/work \
+  -w /home/jovyan/work \
+  quay.io/jupyter/pyspark-notebook \
+  jupyter nbconvert --to notebook --execute notebooks/03_one_shard_end_to_end_validation.ipynb \
+    --output 03_one_shard_end_to_end_validation.ipynb \
+    --output-dir notebooks \
+    --ExecutePreprocessor.timeout=-1
 ```
 
----
+For constrained Docker runtimes, use
+`notebooks/03-1_one_shard_materialized_validation.ipynb`. It writes and rereads
+bronze and silver Parquet between stages and uses lower Spark parallelism.
 
-### Step 2 — Load raw text
+### Step 2 — Prepare bronze
 
-```python
-from pyspark.sql import functions as F
-
-raw_df = (
-    spark.read
-    .text("../data/raw/sample_pt.txt")
-    .withColumnRenamed("value", "text_original")
-)
-```
-
----
-
-### Step 3 — Create bronze dataset
-
-```python
-bronze_df = (
-    raw_df
-    .withColumn("line_id", F.monotonically_increasing_id())
-    .withColumn("text_original", F.trim(F.col("text_original")))
-    .filter(F.col("text_original") != "")
-    .withColumn("text_normalized", F.regexp_replace(F.col("text_original"), r"\\s+", " "))
-    .withColumn("text_match", F.lower(F.col("text_normalized")))
-)
-```
-
----
-
-### Step 4 — Extract candidates
-
-For each pattern:
-
-1. Match connector.
-2. Extract connector text.
-3. Extract text before connector.
-4. Extract text after connector.
-5. Extract rough `vehicle_raw` from the beginning of the text after connector.
-
-Expected output example:
+The notebook reads `data/raw/brwac-clean-1.txt.gz`, splits `<END>` boundaries,
+normalizes whitespace, derives lowercase match text, and writes:
 
 ```text
-sentence: Ele correu como um raio pela rua.
-connector: como um
-pattern_type: como_um_uma
-text_before: Ele correu
-text_after: raio pela rua.
-vehicle_raw: raio pela rua
+data/bronze/brwac_segments
 ```
 
----
+### Step 3 — Extract silver candidates
 
-### Step 5 — Generate aggregations
-
-Required aggregations:
+The notebook calls the reusable `tal_qual.silver` extraction functions and
+writes:
 
 ```text
-connector frequency
-pattern type frequency
-top raw vehicles / right-context phrases
-sample examples by connector
+data/silver/comparison_candidates
 ```
+
+### Step 4 — Generate gold outputs
+
+The notebook writes compact CSV outputs:
+
+```text
+outputs/candidates.csv
+outputs/connector_family_counts.csv
+outputs/pattern_type_counts.csv
+outputs/top_vehicles_global.csv
+outputs/top_vehicles_by_family.csv
+outputs/top_vehicles_by_pattern.csv
+outputs/sample_examples.csv
+```
+
+### Step 5 — Inspect charts and examples
+
+The notebook displays connector-family counts, pattern-type counts, top vehicle
+tables, and examples with connector family, pattern type, candidate text, and
+vehicle fields.
 
 ---
 
-### Step 6 — Export outputs
+## 13. Required Notebook Visualizations
 
-Write both analysis-friendly and visualization-friendly files:
-
-```python
-silver_df.write.mode("overwrite").parquet("../data/silver/comparison_candidates.parquet")
-connector_counts_df.write.mode("overwrite").option("header", True).csv("../outputs/connector_counts.csv")
-top_vehicle_df.write.mode("overwrite").option("header", True).csv("../outputs/top_vehicle_raw.csv")
-examples_df.write.mode("overwrite").option("header", True).csv("../outputs/sample_examples.csv")
-```
-
----
-
-## 13. Required Visualizations
-
-The MVP should include at least two notebook visualizations.
+The MVP includes notebook-based inspection, not a frontend app.
 
 ### 13.1 Connector frequency
 
 Question:
 
-> Which explicit comparison connectors appear most often?
+> Which explicit comparison connector families appear most often?
 
 Chart:
 
@@ -467,84 +478,123 @@ Horizontal or vertical bar chart
 Dataset:
 
 ```text
-connector_counts.csv
+connector_family_counts.csv
 ```
 
 ---
 
-### 13.2 Top raw vehicles / right-context phrases
+### 13.2 Pattern frequency
 
 Question:
 
-> What comparison phrases appear most often after the connectors?
+> Which exact extraction rules appear most often?
 
 Chart:
 
 ```text
-Bar chart or ranked list
+Horizontal or vertical bar chart
 ```
 
 Dataset:
 
 ```text
-top_vehicle_raw.csv
+pattern_type_counts.csv
 ```
 
 ---
 
-### 13.3 Candidate examples table
+### 13.3 Vehicle and candidate examples
 
 Question:
 
-> What do the extracted candidates look like?
+> What right-context phrases and candidate examples did the extractor produce?
 
 Display:
 
 ```text
-connector | candidate_full_text | vehicle_raw
+connector_family | pattern_type | candidate_full_text | vehicle_raw | vehicle_normalized
 ```
 
-This is important because the MVP is candidate extraction, not perfect classification.
+This is important because the MVP is candidate extraction, not perfect
+classification.
 
 ---
 
-## 14. Acceptance Criteria
+## 14. One-Shard Validation Results
+
+The validated one-shard run used:
+
+```text
+Input shard: data/raw/brwac-clean-1.txt.gz
+Spark version: 4.1.1
+Bronze segment rows: 4,673,057
+Silver candidate rows: 58,769
+```
+
+Connector-family counts:
+
+```text
+como          47,885
+que_nem        3,912
+igual          3,268
+parecer        1,651
+feito          1,340
+tal_qual         608
+igualzinho       105
+```
+
+Pattern-type counts:
+
+```text
+como_article         33,162
+como_se              14,723
+que_nem_bare          3,912
+igual_preposition     3,210
+parecer_article       1,651
+feito_article         1,340
+tal_qual_bare           608
+```
+
+Connector-based extraction is feasible on one meaningful brWaC shard for the
+MVP. The run produced enough connector and pattern signal for inspection,
+including silver Parquet, compact gold CSV aggregations, charts, and candidate
+examples.
+
+---
+
+## 15. Acceptance Criteria
 
 The MVP is complete when:
 
 - It runs inside `quay.io/jupyter/pyspark-notebook`.
 - A Spark session starts successfully.
-- A local Portuguese text sample is loaded with Spark.
-- At least 5 connector pattern types are implemented.
-- A silver candidate dataset is generated.
-- Each candidate includes:
-  - connector
-  - pattern type
-  - text before
-  - matched text
-  - text after
-  - candidate full text
-  - raw vehicle phrase
-- At least 2 gold aggregation datasets are generated.
-- At least 2 notebook visualizations are shown.
-- Output files are saved under `outputs/`.
-- Limitations are clearly documented.
+- The notebook runs against one full compressed brWaC shard.
+- Bronze output is generated at `data/bronze/brwac_segments`.
+- Silver candidate output is generated at `data/silver/comparison_candidates`.
+- Each candidate includes provenance, deterministic identity, connector-family,
+  pattern-type, comparison-form, matched text, context, vehicle, and offset
+  fields.
+- Compact gold CSV outputs are saved under `outputs/`.
+- At least two notebook visualizations are shown from generated aggregation data.
+- Candidate examples are displayed for qualitative inspection.
+- Limitations from the one-shard run are clearly documented.
+- Frontend visualization remains downstream context, not part of MVP completion.
 
 ---
 
-## 15. Known Limitations
+## 16. Known Limitations
 
-The MVP will produce noisy candidates.
+Observed limitations from the one-shard validation run:
 
-Expected issues:
-
-- Literal comparisons.
-- False positives.
-- Incomplete candidate windows.
-- Long or messy right-context phrases.
-- Repeated web text fragments.
-- Connector uses that are not figurative.
-- No grammatical validation.
-- No semantic classification.
-
-These are acceptable because the MVP is designed to test extraction feasibility, not linguistic accuracy.
+- Extraction is intentionally connector-based and does not classify literal
+  versus figurative usage.
+- Generic `como` remains excluded, so recall is deliberately lower in exchange
+  for less noise.
+- `vehicle_raw` is a bounded right-context phrase, not a syntactic noun phrase
+  or semantic vehicle.
+- Some top normalized vehicles are discourse continuations from clausal
+  patterns, such as `sabe`, `vê`, and `não bastasse`.
+- Repeated web boilerplate can still influence frequency outputs, although
+  sample examples are deduplicated for inspection.
+- No grammatical validation, lemmatization, semantic classification, or human
+  review is performed in the MVP.
