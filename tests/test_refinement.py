@@ -3,6 +3,12 @@ from unittest.mock import patch
 
 from tal_qual.refinement import (
     ONE_SHARD_REFINED_TIER,
+    PHASE_A_QUALITY_BUCKET_COUNTS_OUTPUT_PATH,
+    PHASE_A_REFINEMENT_EXAMPLES_OUTPUT_PATH,
+    PHASE_A_SCOPE_COUNTS_OUTPUT_PATH,
+    PHASE_A_TOP_CHARTABLE_VEHICLE_HEADS_OUTPUT_PATH,
+    PHASE_A_TOP_CLEAN_COMMON_NOUN_HEADS_OUTPUT_PATH,
+    PHASE_A_TOP_VEHICLE_HEADS_BY_PATTERN_OUTPUT_PATH,
     REFINED_CANDIDATES_NLP_OUTPUT_PATH,
     SAMPLE_DEBUG_TIER,
     build_nlp_parse_text,
@@ -10,6 +16,8 @@ from tal_qual.refinement import (
     prepare_refined_dataframe_for_tier,
     refine_candidate_row,
     sample_debug_rows,
+    summarize_refined_rows,
+    write_phase_a_csv_outputs,
     write_refined_parquet,
 )
 
@@ -33,9 +41,66 @@ def silver_row(candidate_id, pattern_type, source_file="sample.txt", line=1, seg
     }
 
 
+def refined_row(
+    candidate_id,
+    pattern_type="como_article",
+    scope="primary_nominal_article",
+    bucket="clean_nominal_vehicle",
+    head="raio",
+    head_lemma="raio",
+    head_pos="NOUN",
+    clean=True,
+    chartable=True,
+    phrase="raio forte",
+    full_text="Ele corre como um raio forte",
+    line=1,
+    segment=0,
+    char_start=0,
+):
+    row = silver_row(candidate_id, pattern_type, line=line, segment=segment, char_start=char_start)
+    row.update(
+        {
+            "nlp_refinement_scope": scope,
+            "nlp_parse_text": f"{row['matched_text']} {row['vehicle_raw']}",
+            "structural_quality_bucket": bucket,
+            "vehicle_phrase_nlp": phrase,
+            "vehicle_head": head,
+            "vehicle_head_lemma": head_lemma,
+            "vehicle_head_pos": head_pos,
+            "vehicle_phrase_length_tokens": len(phrase.split()),
+            "vehicle_extraction_confidence": "noun_chunk",
+            "vehicle_is_clean_common_noun": clean,
+            "vehicle_is_chartable_vehicle": chartable,
+            "vehicle_reject_reason": "" if clean else bucket,
+            "candidate_full_text": full_text,
+            "vehicle_raw": phrase,
+            "vehicle_normalized": phrase.lower(),
+        }
+    )
+    return row
+
+
 class RefinementTest(unittest.TestCase):
     def test_refined_output_path_matches_phase_a_contract(self):
         self.assertEqual("data/gold/refined_candidates_nlp", str(REFINED_CANDIDATES_NLP_OUTPUT_PATH))
+        self.assertEqual("outputs/phase_a_scope_counts.csv", str(PHASE_A_SCOPE_COUNTS_OUTPUT_PATH))
+        self.assertEqual(
+            "outputs/phase_a_quality_bucket_counts.csv",
+            str(PHASE_A_QUALITY_BUCKET_COUNTS_OUTPUT_PATH),
+        )
+        self.assertEqual(
+            "outputs/phase_a_top_clean_common_noun_heads.csv",
+            str(PHASE_A_TOP_CLEAN_COMMON_NOUN_HEADS_OUTPUT_PATH),
+        )
+        self.assertEqual(
+            "outputs/phase_a_top_chartable_vehicle_heads.csv",
+            str(PHASE_A_TOP_CHARTABLE_VEHICLE_HEADS_OUTPUT_PATH),
+        )
+        self.assertEqual(
+            "outputs/phase_a_top_vehicle_heads_by_pattern.csv",
+            str(PHASE_A_TOP_VEHICLE_HEADS_BY_PATTERN_OUTPUT_PATH),
+        )
+        self.assertEqual("outputs/phase_a_refinement_examples.csv", str(PHASE_A_REFINEMENT_EXAMPLES_OUTPUT_PATH))
 
     def test_scope_mapping_covers_first_phase_pattern_families(self):
         self.assertEqual("primary_nominal_article", nlp_refinement_scope("como_article"))
@@ -312,6 +377,207 @@ class RefinementTest(unittest.TestCase):
         write_refined_parquet(FakeDataFrame(), "target/path", mode="append")
 
         self.assertEqual([("target/path", "append")], writes)
+
+    def test_phase_a_row_summaries_count_scopes_buckets_and_vehicle_head_lemmas(self):
+        rows = [
+            refined_row(
+                "clean-1",
+                pattern_type="como_article",
+                scope="primary_nominal_article",
+                bucket="clean_nominal_vehicle",
+                head_lemma="raio",
+                clean=True,
+                chartable=True,
+                phrase="raio forte",
+                full_text="Ele corre como um raio forte",
+            ),
+            refined_row(
+                "clean-2",
+                pattern_type="que_nem_bare",
+                scope="primary_nominal_bare",
+                bucket="clean_nominal_vehicle",
+                head_lemma="raio",
+                clean=True,
+                chartable=True,
+                phrase="raio claro",
+                full_text="Ela chega que nem raio claro",
+            ),
+            refined_row(
+                "proper-1",
+                pattern_type="como_article",
+                scope="primary_nominal_article",
+                bucket="proper_name_vehicle",
+                head="Maria",
+                head_lemma="Maria",
+                head_pos="PROPN",
+                clean=False,
+                chartable=True,
+                phrase="Maria",
+                full_text="Fala como uma Maria",
+            ),
+            refined_row(
+                "pronoun-1",
+                pattern_type="que_nem_bare",
+                scope="primary_nominal_bare",
+                bucket="pronoun_vehicle",
+                head="eu",
+                head_lemma="eu",
+                head_pos="PRON",
+                clean=False,
+                chartable=False,
+                phrase="eu",
+                full_text="Canta que nem eu",
+            ),
+        ]
+
+        summaries = summarize_refined_rows(rows)
+
+        self.assertEqual(
+            [
+                {"nlp_refinement_scope": "primary_nominal_article", "count": 2},
+                {"nlp_refinement_scope": "primary_nominal_bare", "count": 2},
+            ],
+            summaries["scope_counts"],
+        )
+        self.assertEqual(
+            [
+                {"structural_quality_bucket": "clean_nominal_vehicle", "count": 2},
+                {"structural_quality_bucket": "pronoun_vehicle", "count": 1},
+                {"structural_quality_bucket": "proper_name_vehicle", "count": 1},
+            ],
+            summaries["quality_bucket_counts"],
+        )
+        self.assertEqual(
+            [
+                {
+                    "vehicle_head_lemma": "raio",
+                    "occurrence_count": 2,
+                    "distinct_candidate_text_count": 2,
+                    "distinct_refined_phrase_count": 2,
+                    "representative_vehicle_head": "raio",
+                    "representative_vehicle_phrase": "raio claro",
+                }
+            ],
+            summaries["top_clean_common_noun_heads"],
+        )
+        self.assertEqual(
+            ["raio", "Maria"],
+            [row["vehicle_head_lemma"] for row in summaries["top_chartable_vehicle_heads"]],
+        )
+        self.assertEqual(
+            [("como_article", "Maria"), ("como_article", "raio"), ("que_nem_bare", "raio")],
+            [(row["pattern_type"], row["vehicle_head_lemma"]) for row in summaries["top_vehicle_heads_by_pattern"]],
+        )
+
+    def test_phase_a_refinement_examples_are_side_by_side_deterministic_and_deduplicated(self):
+        rows = [
+            refined_row("late", line=3, char_start=8, full_text="repete como um raio"),
+            refined_row("early", line=1, char_start=2, full_text="repete como um raio"),
+            refined_row("kept", line=2, char_start=1, full_text="grita como um trovão", head_lemma="trovão"),
+        ]
+
+        examples = summarize_refined_rows(rows, examples_per_pattern_bucket=2)["refinement_examples"]
+
+        self.assertEqual(["early", "kept"], [row["candidate_id"] for row in examples])
+        self.assertEqual(
+            [
+                "vehicle_raw",
+                "vehicle_normalized",
+                "vehicle_phrase_nlp",
+                "vehicle_head",
+                "vehicle_head_lemma",
+            ],
+            [
+                column
+                for column in examples[0]
+                if column
+                in {
+                    "vehicle_raw",
+                    "vehicle_normalized",
+                    "vehicle_phrase_nlp",
+                    "vehicle_head",
+                    "vehicle_head_lemma",
+                }
+            ],
+        )
+        self.assertEqual([1, 2], [row["example_rank"] for row in examples])
+
+    def test_phase_a_csv_writer_emits_all_expected_outputs(self):
+        written_paths = []
+
+        class FakeWriter:
+            def __init__(self, name):
+                self.name = name
+
+            def mode(self, mode):
+                self.mode_value = mode
+                return self
+
+            def option(self, key, value):
+                self.option_value = (key, value)
+                return self
+
+            def csv(self, path):
+                written_paths.append((self.name, path, self.mode_value, self.option_value))
+
+        class FakeDataFrame:
+            def __init__(self, name="refined"):
+                self.name = name
+                self.write = FakeWriter(name)
+
+        with (
+            patch("tal_qual.refinement.refinement_scope_counts_dataframe", return_value=FakeDataFrame("scope_counts")),
+            patch(
+                "tal_qual.refinement.structural_quality_bucket_counts_dataframe",
+                return_value=FakeDataFrame("quality_bucket_counts"),
+            ),
+            patch(
+                "tal_qual.refinement.top_clean_common_noun_vehicle_heads_dataframe",
+                return_value=FakeDataFrame("top_clean_heads"),
+            ),
+            patch(
+                "tal_qual.refinement.top_chartable_vehicle_heads_dataframe",
+                return_value=FakeDataFrame("top_chartable_heads"),
+            ),
+            patch(
+                "tal_qual.refinement.top_vehicle_heads_by_pattern_dataframe",
+                return_value=FakeDataFrame("top_heads_by_pattern"),
+            ),
+            patch("tal_qual.refinement.refinement_examples_dataframe", return_value=FakeDataFrame("examples")),
+        ):
+            write_phase_a_csv_outputs(FakeDataFrame(), examples_per_pattern_bucket=3)
+
+        self.assertEqual(
+            [
+                ("scope_counts", "outputs/phase_a_scope_counts.csv", "overwrite", ("header", True)),
+                (
+                    "quality_bucket_counts",
+                    "outputs/phase_a_quality_bucket_counts.csv",
+                    "overwrite",
+                    ("header", True),
+                ),
+                (
+                    "top_clean_heads",
+                    "outputs/phase_a_top_clean_common_noun_heads.csv",
+                    "overwrite",
+                    ("header", True),
+                ),
+                (
+                    "top_chartable_heads",
+                    "outputs/phase_a_top_chartable_vehicle_heads.csv",
+                    "overwrite",
+                    ("header", True),
+                ),
+                (
+                    "top_heads_by_pattern",
+                    "outputs/phase_a_top_vehicle_heads_by_pattern.csv",
+                    "overwrite",
+                    ("header", True),
+                ),
+                ("examples", "outputs/phase_a_refinement_examples.csv", "overwrite", ("header", True)),
+            ],
+            written_paths,
+        )
 
     def refine_with_single_head(self, candidate_id, pattern_type, text, lemma, pos):
         return self.refine_with_phrase(candidate_id, pattern_type, text, text, lemma, pos, 1)

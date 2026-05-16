@@ -1,6 +1,6 @@
 # Phase A Aggregation Outputs
 
-Status: ready-for-agent
+Status: complete
 
 ## Parent
 
@@ -14,15 +14,15 @@ The outputs should summarize refinement scopes, Structural Quality Buckets, cons
 
 ## Acceptance criteria
 
-- [ ] Scope count CSV output is written from the Refined Candidate Dataset.
-- [ ] Structural Quality Bucket count CSV output is written from the Refined Candidate Dataset.
-- [ ] Top Clean Common-Noun Vehicle head CSV output is written.
-- [ ] Top Chartable Vehicle head CSV output is written.
-- [ ] Top vehicle heads by pattern type CSV output is written.
-- [ ] Refinement examples CSV output includes side-by-side raw and refined vehicle fields.
-- [ ] Aggregations use Vehicle Head lemma as the default refined vehicle aggregation key.
-- [ ] Outputs are deterministic enough for repeatable inspection.
-- [ ] Focused tests cover aggregation behavior on tiny refined candidate samples.
+- [x] Scope count CSV output is written from the Refined Candidate Dataset.
+- [x] Structural Quality Bucket count CSV output is written from the Refined Candidate Dataset.
+- [x] Top Clean Common-Noun Vehicle head CSV output is written.
+- [x] Top Chartable Vehicle head CSV output is written.
+- [x] Top vehicle heads by pattern type CSV output is written.
+- [x] Refinement examples CSV output includes side-by-side raw and refined vehicle fields.
+- [x] Aggregations use Vehicle Head lemma as the default refined vehicle aggregation key.
+- [x] Outputs are deterministic enough for repeatable inspection.
+- [x] Focused tests cover aggregation behavior on tiny refined candidate samples.
 
 ## Blocked by
 

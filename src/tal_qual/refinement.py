@@ -7,6 +7,12 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 REFINED_CANDIDATES_NLP_OUTPUT_PATH = Path("data/gold/refined_candidates_nlp")
+PHASE_A_SCOPE_COUNTS_OUTPUT_PATH = Path("outputs/phase_a_scope_counts.csv")
+PHASE_A_QUALITY_BUCKET_COUNTS_OUTPUT_PATH = Path("outputs/phase_a_quality_bucket_counts.csv")
+PHASE_A_TOP_CLEAN_COMMON_NOUN_HEADS_OUTPUT_PATH = Path("outputs/phase_a_top_clean_common_noun_heads.csv")
+PHASE_A_TOP_CHARTABLE_VEHICLE_HEADS_OUTPUT_PATH = Path("outputs/phase_a_top_chartable_vehicle_heads.csv")
+PHASE_A_TOP_VEHICLE_HEADS_BY_PATTERN_OUTPUT_PATH = Path("outputs/phase_a_top_vehicle_heads_by_pattern.csv")
+PHASE_A_REFINEMENT_EXAMPLES_OUTPUT_PATH = Path("outputs/phase_a_refinement_examples.csv")
 
 SAMPLE_DEBUG_TIER = "sample_debug"
 ONE_SHARD_REFINED_TIER = "one_shard_refined"
@@ -220,6 +226,145 @@ def write_refined_parquet(
     refined_df.write.mode(mode).parquet(str(output_path))
 
 
+def refinement_scope_counts_dataframe(refined_df: Any) -> Any:
+    """Count refined candidates by Phase A refinement scope."""
+
+    from pyspark.sql.functions import col
+
+    return refined_df.groupBy("nlp_refinement_scope").count().orderBy(
+        col("count").desc(),
+        col("nlp_refinement_scope"),
+    )
+
+
+def structural_quality_bucket_counts_dataframe(refined_df: Any) -> Any:
+    """Count refined candidates by Structural Quality Bucket."""
+
+    from pyspark.sql.functions import col
+
+    return refined_df.groupBy("structural_quality_bucket").count().orderBy(
+        col("count").desc(),
+        col("structural_quality_bucket"),
+    )
+
+
+def top_clean_common_noun_vehicle_heads_dataframe(refined_df: Any) -> Any:
+    """Count conservative clean common-noun vehicle heads by lemma."""
+
+    return _top_refined_vehicle_heads_dataframe(refined_df, [], "vehicle_is_clean_common_noun")
+
+
+def top_chartable_vehicle_heads_dataframe(refined_df: Any) -> Any:
+    """Count broader chartable vehicle heads by lemma."""
+
+    return _top_refined_vehicle_heads_dataframe(refined_df, [], "vehicle_is_chartable_vehicle")
+
+
+def top_vehicle_heads_by_pattern_dataframe(refined_df: Any) -> Any:
+    """Count chartable vehicle head lemmas by silver pattern type."""
+
+    return _top_refined_vehicle_heads_dataframe(refined_df, ["pattern_type"], "vehicle_is_chartable_vehicle")
+
+
+def refinement_examples_dataframe(refined_df: Any, examples_per_pattern_bucket: int = 10) -> Any:
+    """Build deterministic side-by-side raw/refined vehicle examples."""
+
+    from pyspark.sql import Window
+    from pyspark.sql.functions import col, row_number
+
+    if examples_per_pattern_bucket < 1:
+        raise ValueError("examples_per_pattern_bucket must be at least 1")
+
+    example_columns = [
+        "candidate_id",
+        "source_file",
+        "original_line_id",
+        "segment_id",
+        "pattern_type",
+        "nlp_refinement_scope",
+        "structural_quality_bucket",
+        "matched_text",
+        "vehicle_raw",
+        "vehicle_normalized",
+        "vehicle_phrase_nlp",
+        "vehicle_head",
+        "vehicle_head_lemma",
+        "vehicle_head_pos",
+        "vehicle_is_clean_common_noun",
+        "vehicle_is_chartable_vehicle",
+        "vehicle_reject_reason",
+        "candidate_full_text",
+        "char_start",
+        "char_end",
+    ]
+    dedupe_window = Window.partitionBy("pattern_type", "structural_quality_bucket", "candidate_full_text").orderBy(
+        col("source_file"),
+        col("original_line_id"),
+        col("segment_id"),
+        col("char_start"),
+        col("candidate_id"),
+    )
+    example_window = Window.partitionBy("pattern_type", "structural_quality_bucket").orderBy(
+        col("source_file"),
+        col("original_line_id"),
+        col("segment_id"),
+        col("char_start"),
+        col("candidate_id"),
+    )
+
+    return (
+        refined_df.select(*example_columns)
+        .withColumn("dedupe_rank", row_number().over(dedupe_window))
+        .where(col("dedupe_rank") == 1)
+        .drop("dedupe_rank")
+        .withColumn("example_rank", row_number().over(example_window))
+        .where(col("example_rank") <= examples_per_pattern_bucket)
+        .orderBy("pattern_type", "structural_quality_bucket", "example_rank")
+    )
+
+
+def write_phase_a_csv_outputs(
+    refined_df: Any,
+    scope_counts_path: str | Path = PHASE_A_SCOPE_COUNTS_OUTPUT_PATH,
+    quality_bucket_counts_path: str | Path = PHASE_A_QUALITY_BUCKET_COUNTS_OUTPUT_PATH,
+    top_clean_common_noun_heads_path: str | Path = PHASE_A_TOP_CLEAN_COMMON_NOUN_HEADS_OUTPUT_PATH,
+    top_chartable_vehicle_heads_path: str | Path = PHASE_A_TOP_CHARTABLE_VEHICLE_HEADS_OUTPUT_PATH,
+    top_vehicle_heads_by_pattern_path: str | Path = PHASE_A_TOP_VEHICLE_HEADS_BY_PATTERN_OUTPUT_PATH,
+    refinement_examples_path: str | Path = PHASE_A_REFINEMENT_EXAMPLES_OUTPUT_PATH,
+    examples_per_pattern_bucket: int = 10,
+    mode: str = "overwrite",
+) -> None:
+    """Write deterministic compact Phase A CSV outputs for inspection."""
+
+    _write_csv(refinement_scope_counts_dataframe(refined_df), scope_counts_path, mode)
+    _write_csv(structural_quality_bucket_counts_dataframe(refined_df), quality_bucket_counts_path, mode)
+    _write_csv(top_clean_common_noun_vehicle_heads_dataframe(refined_df), top_clean_common_noun_heads_path, mode)
+    _write_csv(top_chartable_vehicle_heads_dataframe(refined_df), top_chartable_vehicle_heads_path, mode)
+    _write_csv(top_vehicle_heads_by_pattern_dataframe(refined_df), top_vehicle_heads_by_pattern_path, mode)
+    _write_csv(refinement_examples_dataframe(refined_df, examples_per_pattern_bucket), refinement_examples_path, mode)
+
+
+def summarize_refined_rows(
+    rows: Iterable[Mapping[str, Any]],
+    examples_per_pattern_bucket: int = 10,
+) -> dict[str, list[dict[str, Any]]]:
+    """Summarize tiny refined row samples with the same keys used by the Spark CSV outputs."""
+
+    row_list = list(rows)
+    return {
+        "scope_counts": _count_rows(row_list, ["nlp_refinement_scope"]),
+        "quality_bucket_counts": _count_rows(row_list, ["structural_quality_bucket"]),
+        "top_clean_common_noun_heads": _top_refined_vehicle_head_rows(row_list, [], "vehicle_is_clean_common_noun"),
+        "top_chartable_vehicle_heads": _top_refined_vehicle_head_rows(row_list, [], "vehicle_is_chartable_vehicle"),
+        "top_vehicle_heads_by_pattern": _top_refined_vehicle_head_rows(
+            row_list,
+            ["pattern_type"],
+            "vehicle_is_chartable_vehicle",
+        ),
+        "refinement_examples": _refinement_example_rows(row_list, examples_per_pattern_bucket),
+    }
+
+
 def load_portuguese_parser(model_name: str = "pt_core_news_sm") -> Any:
     """Load the default Portuguese spaCy parser, falling back to no extraction."""
 
@@ -398,6 +543,140 @@ def _doc_tokens(doc: Any) -> list[Any]:
     return list(doc)
 
 
+def _top_refined_vehicle_heads_dataframe(refined_df: Any, group_columns: list[str], eligibility_column: str) -> Any:
+    from pyspark.sql.functions import col, count, countDistinct, min as spark_min
+
+    grouped_columns = [*group_columns, "vehicle_head_lemma"]
+    order_columns = [col("occurrence_count").desc(), *[col(column) for column in grouped_columns]]
+
+    return (
+        refined_df.where(col(eligibility_column))
+        .where(col("vehicle_head_lemma") != "")
+        .groupBy(*grouped_columns)
+        .agg(
+            count("*").alias("occurrence_count"),
+            countDistinct("candidate_full_text").alias("distinct_candidate_text_count"),
+            countDistinct("vehicle_phrase_nlp").alias("distinct_refined_phrase_count"),
+            spark_min("vehicle_head").alias("representative_vehicle_head"),
+            spark_min("vehicle_phrase_nlp").alias("representative_vehicle_phrase"),
+        )
+        .orderBy(*order_columns)
+    )
+
+
+def _write_csv(dataframe: Any, output_path: str | Path, mode: str) -> None:
+    dataframe.write.mode(mode).option("header", True).csv(str(output_path))
+
+
+def _count_rows(rows: list[Mapping[str, Any]], group_columns: list[str]) -> list[dict[str, Any]]:
+    counts: dict[tuple[Any, ...], int] = {}
+    for row in rows:
+        key = tuple(row.get(column, "") for column in group_columns)
+        counts[key] = counts.get(key, 0) + 1
+
+    output = [
+        {**{column: key[index] for index, column in enumerate(group_columns)}, "count": count}
+        for key, count in counts.items()
+    ]
+    return sorted(output, key=lambda item: (-int(item["count"]), *[str(item[column]) for column in group_columns]))
+
+
+def _top_refined_vehicle_head_rows(
+    rows: list[Mapping[str, Any]],
+    group_columns: list[str],
+    eligibility_column: str,
+) -> list[dict[str, Any]]:
+    groups: dict[tuple[Any, ...], list[Mapping[str, Any]]] = {}
+    for row in rows:
+        if not bool(row.get(eligibility_column, False)):
+            continue
+        if not str(row.get("vehicle_head_lemma", "")).strip():
+            continue
+        key = tuple([*(row.get(column, "") for column in group_columns), row.get("vehicle_head_lemma", "")])
+        groups.setdefault(key, []).append(row)
+
+    output: list[dict[str, Any]] = []
+    grouped_columns = [*group_columns, "vehicle_head_lemma"]
+    for key, grouped_rows in groups.items():
+        output.append(
+            {
+                **{column: key[index] for index, column in enumerate(grouped_columns)},
+                "occurrence_count": len(grouped_rows),
+                "distinct_candidate_text_count": len(
+                    {str(row.get("candidate_full_text", "")) for row in grouped_rows}
+                ),
+                "distinct_refined_phrase_count": len({str(row.get("vehicle_phrase_nlp", "")) for row in grouped_rows}),
+                "representative_vehicle_head": min(str(row.get("vehicle_head", "")) for row in grouped_rows),
+                "representative_vehicle_phrase": min(str(row.get("vehicle_phrase_nlp", "")) for row in grouped_rows),
+            }
+        )
+
+    return sorted(
+        output,
+        key=lambda item: (
+            -int(item["occurrence_count"]),
+            *[str(item[column]) for column in grouped_columns],
+        ),
+    )
+
+
+def _refinement_example_rows(
+    rows: list[Mapping[str, Any]],
+    examples_per_pattern_bucket: int,
+) -> list[dict[str, Any]]:
+    if examples_per_pattern_bucket < 1:
+        raise ValueError("examples_per_pattern_bucket must be at least 1")
+
+    example_columns = [
+        "candidate_id",
+        "source_file",
+        "original_line_id",
+        "segment_id",
+        "pattern_type",
+        "nlp_refinement_scope",
+        "structural_quality_bucket",
+        "matched_text",
+        "vehicle_raw",
+        "vehicle_normalized",
+        "vehicle_phrase_nlp",
+        "vehicle_head",
+        "vehicle_head_lemma",
+        "vehicle_head_pos",
+        "vehicle_is_clean_common_noun",
+        "vehicle_is_chartable_vehicle",
+        "vehicle_reject_reason",
+        "candidate_full_text",
+        "char_start",
+        "char_end",
+    ]
+    ordered = sorted(rows, key=_refined_row_sort_key)
+    seen: set[tuple[Any, ...]] = set()
+    examples_by_group: dict[tuple[Any, ...], int] = {}
+    examples: list[dict[str, Any]] = []
+
+    for row in ordered:
+        group = (row.get("pattern_type", ""), row.get("structural_quality_bucket", ""))
+        dedupe_key = (*group, row.get("candidate_full_text", ""))
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+
+        rank = examples_by_group.get(group, 0) + 1
+        if rank > examples_per_pattern_bucket:
+            continue
+        examples_by_group[group] = rank
+        examples.append({**{column: row.get(column, "") for column in example_columns}, "example_rank": rank})
+
+    return sorted(
+        examples,
+        key=lambda item: (
+            str(item["pattern_type"]),
+            str(item["structural_quality_bucket"]),
+            int(item["example_rank"]),
+        ),
+    )
+
+
 class _SpacyParser:
     def __init__(self, nlp: Any):
         self.nlp = nlp
@@ -457,5 +736,17 @@ def _silver_row_sort_key(row: Mapping[str, Any]) -> tuple[Any, ...]:
         int(row.get("segment_id", 0)),
         int(row.get("char_start", 0)),
         int(row.get("char_end", 0)),
+        str(row.get("candidate_id", "")),
+    )
+
+
+def _refined_row_sort_key(row: Mapping[str, Any]) -> tuple[Any, ...]:
+    return (
+        str(row.get("pattern_type", "")),
+        str(row.get("structural_quality_bucket", "")),
+        str(row.get("source_file", "")),
+        int(row.get("original_line_id", 0)),
+        int(row.get("segment_id", 0)),
+        int(row.get("char_start", 0)),
         str(row.get("candidate_id", "")),
     )
