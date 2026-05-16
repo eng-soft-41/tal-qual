@@ -1,6 +1,6 @@
 # Vehicle Normalization and Gold Aggregations
 
-Status: ready-for-agent
+Status: complete
 
 ## Parent
 
@@ -12,17 +12,16 @@ Turn silver candidates into inspectable MVP outputs. This slice should add simpl
 
 ## Acceptance criteria
 
-- [ ] `vehicle_normalized` is derived with lowercase, whitespace cleanup, and surrounding punctuation trimming.
-- [ ] Leading Portuguese articles are preserved in `vehicle_normalized` by default.
-- [ ] Full silver candidate output is written as Spark Parquet.
-- [ ] A deterministic candidate sample CSV of up to 5,000 rows is produced.
-- [ ] Connector-family and pattern-type count CSVs are produced.
-- [ ] Top vehicle CSVs are produced globally, by connector family, and by pattern type.
-- [ ] Vehicle count outputs include occurrence counts and, where useful, distinct candidate text counts.
-- [ ] Sample examples include up to 20 deterministic examples per pattern type.
-- [ ] Sample examples deduplicate repeated candidate text before selection while silver preserves all occurrences.
+- [x] `vehicle_normalized` is derived with lowercase, whitespace cleanup, and surrounding punctuation trimming.
+- [x] Leading Portuguese articles are preserved in `vehicle_normalized` by default.
+- [x] Full silver candidate output is written as Spark Parquet.
+- [x] A deterministic candidate sample CSV of up to 5,000 rows is produced.
+- [x] Connector-family and pattern-type count CSVs are produced.
+- [x] Top vehicle CSVs are produced globally, by connector family, and by pattern type.
+- [x] Vehicle count outputs include occurrence counts and, where useful, distinct candidate text counts.
+- [x] Sample examples include up to 20 deterministic examples per pattern type.
+- [x] Sample examples deduplicate repeated candidate text before selection while silver preserves all occurrences.
 
 ## Blocked by
 
 - .scratch/portuguese-similes-mvp/issues/03-narrow-connector-candidate-extraction.md
-
