@@ -45,6 +45,16 @@ class PhaseAValidationNotebookTest(unittest.TestCase):
         self.assertIn("Phase A is structural vehicle refinement", self.source)
         self.assertIn("does not classify candidates as figurative or literal", self.source)
 
+    def test_before_after_chart_handles_empty_refined_rankings(self):
+        self.assertIn("plot_ranking_or_empty", self.source)
+        self.assertIn("dataframe.empty", self.source)
+        self.assertIn("No rows available for this ranking", self.source)
+
+    def test_notebook_preflights_phase_a_parser_availability(self):
+        self.assertIn("load_portuguese_parser", self.source)
+        self.assertIn("parser_unavailable", self.source)
+        self.assertIn("Missing Phase A spaCy parser", self.source)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -10,6 +10,7 @@ __pycache__/
 data/raw
 data/bronze
 data/silver
+data/gold
 outputs
 
 docs/specs/draft
