@@ -42,6 +42,8 @@ SCOPE_BY_PATTERN_TYPE: dict[str, str] = {
 }
 
 OUT_OF_SCOPE = "not_in_first_slice_scope"
+TARGET_REFINEMENT_SCOPES = frozenset({"primary_nominal_article", "primary_nominal_bare"})
+NOUN_LIKE_POS = frozenset({"NOUN", "PROPN", "PRON", "NUM"})
 _WHITESPACE_RE = re.compile(r"\s+")
 
 
@@ -57,7 +59,7 @@ def build_nlp_parse_text(matched_text: str, vehicle_raw: str) -> str:
     return _compact_text(matched_text, vehicle_raw)
 
 
-def refine_candidate_row(row: Mapping[str, Any]) -> dict[str, Any]:
+def refine_candidate_row(row: Mapping[str, Any], parser: Any | None = None) -> dict[str, Any]:
     """Carry one silver row forward into the minimal refined dataset shape."""
 
     refined = {field: row[field] for field in SILVER_TRACEABILITY_FIELDS if field in row}
@@ -66,16 +68,22 @@ def refine_candidate_row(row: Mapping[str, Any]) -> dict[str, Any]:
         str(row.get("matched_text", "")),
         str(row.get("vehicle_raw", "")),
     )
+    refined.update(_extract_vehicle_structure(refined, parser or load_portuguese_parser()))
     return refined
 
 
-def refine_candidate_rows(rows: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+def refine_candidate_rows(rows: Iterable[Mapping[str, Any]], parser: Any | None = None) -> list[dict[str, Any]]:
     """Carry silver candidate rows forward without changing cardinality."""
 
-    return [refine_candidate_row(row) for row in rows]
+    row_parser = parser or load_portuguese_parser()
+    return [refine_candidate_row(row, row_parser) for row in rows]
 
 
-def sample_debug_rows(rows: Iterable[Mapping[str, Any]], rows_per_pattern: int = 25) -> list[dict[str, Any]]:
+def sample_debug_rows(
+    rows: Iterable[Mapping[str, Any]],
+    rows_per_pattern: int = 25,
+    parser: Any | None = None,
+) -> list[dict[str, Any]]:
     """Return a deterministic pattern-stratified subset of refined rows."""
 
     if rows_per_pattern < 1:
@@ -90,13 +98,19 @@ def sample_debug_rows(rows: Iterable[Mapping[str, Any]], rows_per_pattern: int =
         ordered_rows = sorted(pattern_groups[pattern_type], key=_silver_row_sort_key)
         sampled.extend(ordered_rows[:rows_per_pattern])
 
-    return refine_candidate_rows(sampled)
+    return refine_candidate_rows(sampled, parser)
 
 
 def prepare_refined_dataframe(silver_df: Any) -> Any:
     """Create a Spark DataFrame for the minimal refined candidate dataset."""
 
-    from pyspark.sql.functions import col, concat_ws, lit, regexp_replace, trim, when
+    from pyspark.sql.functions import col, concat_ws, lit, regexp_replace, struct, trim, udf, when
+    from pyspark.sql.types import (
+        IntegerType,
+        StringType,
+        StructField,
+        StructType,
+    )
 
     scope_column = lit(OUT_OF_SCOPE)
     for pattern_type, scope in SCOPE_BY_PATTERN_TYPE.items():
@@ -104,10 +118,32 @@ def prepare_refined_dataframe(silver_df: Any) -> Any:
 
     parse_text_column = trim(regexp_replace(concat_ws(" ", col("matched_text"), col("vehicle_raw")), r"\s+", " "))
 
-    return (
+    vehicle_structure_schema = StructType(
+        [
+            StructField("vehicle_phrase_nlp", StringType(), nullable=False),
+            StructField("vehicle_head", StringType(), nullable=False),
+            StructField("vehicle_head_lemma", StringType(), nullable=False),
+            StructField("vehicle_head_pos", StringType(), nullable=False),
+            StructField("vehicle_phrase_length_tokens", IntegerType(), nullable=False),
+            StructField("vehicle_extraction_confidence", StringType(), nullable=False),
+            StructField("nlp_model_name", StringType(), nullable=False),
+            StructField("nlp_model_version", StringType(), nullable=False),
+        ]
+    )
+    extract_vehicle_structure = udf(_vehicle_structure_for_spark_row, vehicle_structure_schema)
+
+    scoped_df = (
         silver_df.select(*SILVER_TRACEABILITY_FIELDS)
         .withColumn("nlp_refinement_scope", scope_column)
         .withColumn("nlp_parse_text", parse_text_column)
+    )
+    return (
+        scoped_df.withColumn(
+            "vehicle_structure",
+            extract_vehicle_structure(struct(*[col(name) for name in scoped_df.columns])),
+        )
+        .select("*", "vehicle_structure.*")
+        .drop("vehicle_structure")
     )
 
 
@@ -166,6 +202,164 @@ def write_refined_parquet(
     """Write the refined candidate dataset as Parquet."""
 
     refined_df.write.mode(mode).parquet(str(output_path))
+
+
+def load_portuguese_parser(model_name: str = "pt_core_news_sm") -> Any:
+    """Load the default Portuguese spaCy parser, falling back to no extraction."""
+
+    try:
+        import spacy
+    except ImportError:
+        return _UnavailableParser()
+
+    try:
+        nlp = spacy.load(model_name)
+    except OSError:
+        return _UnavailableParser(model_name=model_name)
+
+    return _SpacyParser(nlp)
+
+
+def _extract_vehicle_structure(refined: Mapping[str, Any], parser: Any) -> dict[str, Any]:
+    base = _empty_vehicle_structure(parser)
+    if refined["nlp_refinement_scope"] not in TARGET_REFINEMENT_SCOPES:
+        base["vehicle_extraction_confidence"] = "not_in_first_slice_scope"
+        return base
+
+    if isinstance(parser, _UnavailableParser):
+        base["vehicle_extraction_confidence"] = "parser_unavailable"
+        return base
+
+    doc = parser(str(refined.get("nlp_parse_text", "")))
+    vehicle_start = len(str(refined.get("matched_text", "")).split())
+
+    noun_chunk_result = _vehicle_from_noun_chunks(doc, vehicle_start)
+    if noun_chunk_result is not None:
+        return {**base, **noun_chunk_result}
+
+    fallback_result = _vehicle_from_pos_fallback(doc, vehicle_start)
+    if fallback_result is not None:
+        return {**base, **fallback_result}
+
+    base["vehicle_extraction_confidence"] = "no_noun_like_vehicle"
+    return base
+
+
+def _vehicle_from_noun_chunks(doc: Any, vehicle_start: int) -> dict[str, Any] | None:
+    for chunk in getattr(doc, "noun_chunks", []):
+        root = getattr(chunk, "root", None)
+        if root is None:
+            continue
+        if int(getattr(root, "i", -1)) < vehicle_start:
+            continue
+        if str(getattr(root, "pos_", "")) not in NOUN_LIKE_POS:
+            continue
+
+        phrase_start = max(int(getattr(chunk, "start", vehicle_start)), vehicle_start)
+        phrase_end = int(getattr(chunk, "end", phrase_start))
+        phrase_tokens = _doc_tokens(doc)[phrase_start:phrase_end]
+        phrase_text = _compact_text(*(str(getattr(token, "text", "")) for token in phrase_tokens))
+        return _vehicle_result(
+            phrase_text=phrase_text or str(getattr(chunk, "text", "")),
+            head=root,
+            phrase_length=len(phrase_tokens) or len(chunk),
+            confidence="noun_chunk",
+        )
+    return None
+
+
+def _vehicle_from_pos_fallback(doc: Any, vehicle_start: int) -> dict[str, Any] | None:
+    tokens = _doc_tokens(doc)
+    for index, token in enumerate(tokens[vehicle_start:], start=vehicle_start):
+        if str(getattr(token, "pos_", "")) not in NOUN_LIKE_POS:
+            continue
+
+        phrase_tokens = [token]
+        for following in tokens[index + 1 :]:
+            if str(getattr(following, "pos_", "")) in {"ADJ", "NOUN", "PROPN"}:
+                phrase_tokens.append(following)
+                continue
+            break
+
+        return _vehicle_result(
+            phrase_text=_compact_text(*(str(getattr(item, "text", "")) for item in phrase_tokens)),
+            head=token,
+            phrase_length=len(phrase_tokens),
+            confidence="pos_fallback",
+        )
+    return None
+
+
+def _vehicle_result(phrase_text: str, head: Any, phrase_length: int, confidence: str) -> dict[str, Any]:
+    return {
+        "vehicle_phrase_nlp": phrase_text,
+        "vehicle_head": str(getattr(head, "text", "")),
+        "vehicle_head_lemma": str(getattr(head, "lemma_", "")),
+        "vehicle_head_pos": str(getattr(head, "pos_", "")),
+        "vehicle_phrase_length_tokens": phrase_length,
+        "vehicle_extraction_confidence": confidence,
+    }
+
+
+def _empty_vehicle_structure(parser: Any) -> dict[str, Any]:
+    return {
+        "vehicle_phrase_nlp": "",
+        "vehicle_head": "",
+        "vehicle_head_lemma": "",
+        "vehicle_head_pos": "",
+        "vehicle_phrase_length_tokens": 0,
+        "vehicle_extraction_confidence": "",
+        "nlp_model_name": str(getattr(parser, "model_name", "")),
+        "nlp_model_version": str(getattr(parser, "model_version", "")),
+    }
+
+
+def _doc_tokens(doc: Any) -> list[Any]:
+    return list(doc)
+
+
+class _SpacyParser:
+    def __init__(self, nlp: Any):
+        self.nlp = nlp
+        meta = getattr(nlp, "meta", {})
+        self.model_name = str(meta.get("name", getattr(nlp, "lang", "spacy")))
+        self.model_version = str(meta.get("version", ""))
+
+    def __call__(self, text: str) -> Any:
+        return self.nlp(text)
+
+
+class _UnavailableParser:
+    model_version = ""
+
+    def __init__(self, model_name: str = ""):
+        self.model_name = model_name
+
+    def __call__(self, text: str) -> Any:
+        return []
+
+
+_SPARK_WORKER_PARSER: Any | None = None
+
+
+def _vehicle_structure_for_spark_row(row: Any) -> dict[str, Any]:
+    global _SPARK_WORKER_PARSER
+
+    if _SPARK_WORKER_PARSER is None:
+        _SPARK_WORKER_PARSER = load_portuguese_parser()
+
+    row_dict = row.asDict() if hasattr(row, "asDict") else dict(row)
+    refined = refine_candidate_row(row_dict, parser=_SPARK_WORKER_PARSER)
+    return {
+        "vehicle_phrase_nlp": str(refined["vehicle_phrase_nlp"]),
+        "vehicle_head": str(refined["vehicle_head"]),
+        "vehicle_head_lemma": str(refined["vehicle_head_lemma"]),
+        "vehicle_head_pos": str(refined["vehicle_head_pos"]),
+        "vehicle_phrase_length_tokens": int(refined["vehicle_phrase_length_tokens"]),
+        "vehicle_extraction_confidence": str(refined["vehicle_extraction_confidence"]),
+        "nlp_model_name": str(refined["nlp_model_name"]),
+        "nlp_model_version": str(refined["nlp_model_version"]),
+    }
 
 
 def _compact_text(*parts: str) -> str:

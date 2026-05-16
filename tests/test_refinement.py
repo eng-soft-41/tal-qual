@@ -71,6 +71,107 @@ class RefinementTest(unittest.TestCase):
         self.assertEqual("primary_nominal_article", refined["nlp_refinement_scope"])
         self.assertEqual("como um raio forte", refined["nlp_parse_text"])
 
+    def test_article_candidate_prefers_noun_chunk_vehicle_extraction(self):
+        row = silver_row("candidate-1", "como_article")
+        parser = FakeParser(
+            FakeDoc(
+                [
+                    FakeToken("como", "como", "SCONJ", 0),
+                    FakeToken("um", "um", "DET", 1),
+                    FakeToken("raio", "raio", "NOUN", 2),
+                    FakeToken("forte", "forte", "ADJ", 3),
+                ],
+                [FakeSpan("raio forte", 2, 4, FakeToken("raio", "raio", "NOUN", 2))],
+            )
+        )
+
+        refined = refine_candidate_row(row, parser=parser)
+
+        self.assertEqual("raio forte", refined["vehicle_phrase_nlp"])
+        self.assertEqual("raio", refined["vehicle_head"])
+        self.assertEqual("raio", refined["vehicle_head_lemma"])
+        self.assertEqual("NOUN", refined["vehicle_head_pos"])
+        self.assertEqual(2, refined["vehicle_phrase_length_tokens"])
+        self.assertEqual("noun_chunk", refined["vehicle_extraction_confidence"])
+        self.assertEqual("fake_pt", refined["nlp_model_name"])
+        self.assertEqual("0.1", refined["nlp_model_version"])
+
+    def test_bare_candidate_uses_pos_fallback_and_keeps_bare_scope(self):
+        row = silver_row("candidate-2", "que_nem_bare")
+        row["matched_text"] = "que nem"
+        row["vehicle_raw"] = "gente grande"
+        parser = FakeParser(
+            FakeDoc(
+                [
+                    FakeToken("que", "que", "SCONJ", 0),
+                    FakeToken("nem", "nem", "ADV", 1),
+                    FakeToken("gente", "gente", "NOUN", 2),
+                    FakeToken("grande", "grande", "ADJ", 3),
+                ],
+                [],
+            )
+        )
+
+        refined = refine_candidate_row(row, parser=parser)
+
+        self.assertEqual("primary_nominal_bare", refined["nlp_refinement_scope"])
+        self.assertEqual("gente grande", refined["vehicle_phrase_nlp"])
+        self.assertEqual("gente", refined["vehicle_head"])
+        self.assertEqual("gente", refined["vehicle_head_lemma"])
+        self.assertEqual("NOUN", refined["vehicle_head_pos"])
+        self.assertEqual(2, refined["vehicle_phrase_length_tokens"])
+        self.assertEqual("pos_fallback", refined["vehicle_extraction_confidence"])
+
+    def test_target_scope_without_noun_like_vehicle_keeps_empty_structure_fields(self):
+        row = silver_row("candidate-3", "como_article")
+        row["vehicle_raw"] = "correndo muito"
+        parser = FakeParser(
+            FakeDoc(
+                [
+                    FakeToken("como", "como", "SCONJ", 0),
+                    FakeToken("um", "um", "DET", 1),
+                    FakeToken("correndo", "correr", "VERB", 2),
+                    FakeToken("muito", "muito", "ADV", 3),
+                ],
+                [],
+            )
+        )
+
+        refined = refine_candidate_row(row, parser=parser)
+
+        self.assertEqual("", refined["vehicle_phrase_nlp"])
+        self.assertEqual("", refined["vehicle_head"])
+        self.assertEqual("", refined["vehicle_head_lemma"])
+        self.assertEqual("", refined["vehicle_head_pos"])
+        self.assertEqual(0, refined["vehicle_phrase_length_tokens"])
+        self.assertEqual("no_noun_like_vehicle", refined["vehicle_extraction_confidence"])
+
+    def test_non_target_scope_is_carried_without_default_vehicle_extraction(self):
+        row = silver_row("candidate-4", "como_se")
+        parser = FakeParser(
+            FakeDoc(
+                [
+                    FakeToken("como", "como", "SCONJ", 0),
+                    FakeToken("se", "se", "SCONJ", 1),
+                    FakeToken("fosse", "ser", "VERB", 2),
+                    FakeToken("rei", "rei", "NOUN", 3),
+                ],
+                [FakeSpan("rei", 3, 4, FakeToken("rei", "rei", "NOUN", 3))],
+            )
+        )
+
+        refined = refine_candidate_row(row, parser=parser)
+
+        self.assertEqual("clausal", refined["nlp_refinement_scope"])
+        self.assertEqual("", refined["vehicle_phrase_nlp"])
+        self.assertEqual("", refined["vehicle_head"])
+        self.assertEqual("", refined["vehicle_head_lemma"])
+        self.assertEqual("", refined["vehicle_head_pos"])
+        self.assertEqual(0, refined["vehicle_phrase_length_tokens"])
+        self.assertEqual("not_in_first_slice_scope", refined["vehicle_extraction_confidence"])
+        self.assertEqual("fake_pt", refined["nlp_model_name"])
+        self.assertEqual("0.1", refined["nlp_model_version"])
+
     def test_sample_debug_rows_are_deterministic_and_pattern_stratified(self):
         rows = [
             silver_row("bare-2", "que_nem_bare", line=3, char_start=9),
@@ -122,6 +223,52 @@ class RefinementTest(unittest.TestCase):
         write_refined_parquet(FakeDataFrame(), "target/path", mode="append")
 
         self.assertEqual([("target/path", "append")], writes)
+
+
+class FakeToken:
+    def __init__(self, text, lemma, pos, index):
+        self.text = text
+        self.lemma_ = lemma
+        self.pos_ = pos
+        self.i = index
+
+
+class FakeSpan:
+    def __init__(self, text, start, end, root):
+        self.text = text
+        self.start = start
+        self.end = end
+        self.root = root
+
+    def __len__(self):
+        return self.end - self.start
+
+
+class FakeDoc:
+    def __init__(self, tokens, noun_chunks):
+        self._tokens = tokens
+        self.noun_chunks = noun_chunks
+
+    def __iter__(self):
+        return iter(self._tokens)
+
+    def __getitem__(self, index):
+        return self._tokens[index]
+
+    def __len__(self):
+        return len(self._tokens)
+
+
+class FakeParser:
+    model_name = "fake_pt"
+    model_version = "0.1"
+
+    def __init__(self, doc):
+        self.doc = doc
+
+    def __call__(self, text):
+        self.text = text
+        return self.doc
 
 
 if __name__ == "__main__":
