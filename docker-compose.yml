@@ -1,15 +1,17 @@
 services:
   pyspark-notebook:
-    image: quay.io/jupyter/pyspark-notebook
+    build:
+      context: .
+      dockerfile: docker/pyspark/Dockerfile
+    image: tal-qual-pyspark
     container_name: tal-qual-pyspark
     ports:
-      - "8888:8888"
-      - "4040:4040"
-      - "4041:4041"
+      - "127.0.0.1:8888:8888"
+      - "127.0.0.1:4040:4040"
+      - "127.0.0.1:4041:4041"
     volumes:
       - "$PWD:/home/jovyan/work"
     environment:
       - JUPYTER_ENABLE_LAB=yes
     command: >
-      bash -c "python -m pip install -e /home/jovyan/work &&
-               start-notebook.sh --NotebookApp.token='' --NotebookApp.password=''"
+      start-notebook.sh --NotebookApp.token='' --NotebookApp.password=''

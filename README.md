@@ -23,38 +23,40 @@ current test suite does not require pytest-specific features.
 
 ## Runtime
 
-Docker is the expected PySpark/Jupyter runtime. Run the Jupyter Docker Stacks
-PySpark image from the repo root:
+Docker Compose is the expected PySpark/Jupyter runtime. From the repo root,
+build the project notebook image and start Jupyter:
 
 ```bash
-docker run --rm -it \
-  -p 8888:8888 \
-  -p 4040:4040 \
-  -p 4041:4041 \
-  -v "$PWD":/home/jovyan/work \
-  quay.io/jupyter/pyspark-notebook
+docker compose up --build
 ```
 
-Open the Jupyter URL printed by the container, then open
-`work/notebooks/01_pyspark_smoke_run.ipynb`. Spark UI is usually available at
-`http://localhost:4040` while a job is running. Port `4041` is exposed for a
-second Spark UI if the first Spark application is still active.
-
-The notebook inserts `work/src` into `sys.path`, so the mounted repository can
-be imported without packaging work. If you prefer an editable install inside the
-container, run:
+After the first build, use the faster start command:
 
 ```bash
-python -m pip install -e /home/jovyan/work
+docker compose up
+```
+
+Open `http://localhost:8888/lab`, then open
+`work/notebooks/01_pyspark_smoke_run.ipynb`. The compose file binds Jupyter and
+Spark UI ports to `127.0.0.1`, so the passwordless local notebook is not exposed
+on the network. Spark UI is usually available at `http://localhost:4040` while a
+job is running. Port `4041` is exposed for a second Spark UI if the first Spark
+application is still active.
+
+The Docker image installs the project Python dependencies once at build time,
+including the spaCy Portuguese model used by Phase A. The repository itself is
+mounted into the container at `/home/jovyan/work`, and notebooks still insert
+`work/src` into `sys.path`, so normal source edits are visible without
+rebuilding the image. Rebuild only when `pyproject.toml` dependencies change:
+
+```bash
+docker compose build
 ```
 
 For a non-interactive rerun of the one-shard notebook, execute:
 
 ```bash
-docker run --rm \
-  -v "$PWD":/home/jovyan/work \
-  -w /home/jovyan/work \
-  quay.io/jupyter/pyspark-notebook \
+docker compose run --rm pyspark-notebook \
   jupyter nbconvert --to notebook --execute notebooks/03_one_shard_end_to_end_validation.ipynb \
     --output 03_one_shard_end_to_end_validation.ipynb \
     --output-dir notebooks \
@@ -269,13 +271,11 @@ refined examples.
 For a non-interactive sample-debug run:
 
 ```bash
-docker run --rm \
+docker compose run --rm \
   -e TAL_QUAL_PHASE_A_TIER=sample_debug \
   -e TAL_QUAL_PHASE_A_LOAD_EXISTING_REFINED=0 \
-  -v "$PWD":/home/jovyan/work \
-  -w /home/jovyan/work \
-  quay.io/jupyter/pyspark-notebook \
-  bash -lc 'python -m pip install -e /home/jovyan/work && jupyter nbconvert --to notebook --execute notebooks/04_phase_a_validation.ipynb --ExecutePreprocessor.timeout=3600 --output 04_phase_a_validation.executed.ipynb'
+  pyspark-notebook \
+  jupyter nbconvert --to notebook --execute notebooks/04_phase_a_validation.ipynb --ExecutePreprocessor.timeout=3600 --output 04_phase_a_validation.executed.ipynb
 ```
 
 For the full one-shard tier, use `TAL_QUAL_PHASE_A_TIER=one_shard_refined`.
