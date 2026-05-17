@@ -245,13 +245,17 @@ connector pipeline:
    Improve vehicle phrase boundaries, reject more discourse continuations, and
    separate useful multi-token vehicles from generic tails.
 
-2. Increased dataset analysis.
-   Add dominance, diversity, ground-family, vehicle-family, and review-quality
-   summary tables.
+2. Broader brWaC shard target.
+   Move beyond `brwac-clean-1.txt.gz` to a half-corpus or full-corpus run if
+   the current prefilter and Spark settings continue to hold up.
 
 3. WebApp-ready output structure.
    Produce stable tables that a frontend can consume directly, including
    ground pages, vehicle pages, pair rankings, examples, and summary metrics.
+
+4. Increased dataset analysis.
+   Add dominance, diversity, ground-family, vehicle-family, and review-quality
+   summary tables if the WebApp needs them.
 
 ## Useful Files
 
