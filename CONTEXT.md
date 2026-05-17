@@ -1,84 +1,73 @@
 # Tal Qual
 
-This context describes the language used for the Portuguese comparison-candidate analysis project. It keeps linguistic and dataset terms stable across specs, issues, notebooks, and implementation notes.
+This context describes the current language for the Portuguese
+como-article ground/vehicle dataset. The project has one supported path:
+build a high-precision dataset of curated `GROUND como um/uma/uns/umas
+VEHICLE` comparisons for analysis and WebApp visualizations.
 
 ## Language
 
-**Comparison Candidate**:
-A corpus excerpt selected by connector-based rules as a possible explicit comparison.
-_Avoid_: simile, final simile
+**Bronze Segment**:
+A boundary-safe corpus segment prepared from brWaC raw text. It preserves source
+provenance and normalized text used by the extractor.
+_Avoid_: raw document, silver row
 
-**Silver Candidate**:
-A comparison candidate emitted by the Spark extraction layer before linguistic refinement.
-_Avoid_: raw simile, final vehicle row
+**Como-Article Ground/Vehicle Candidate**:
+A candidate whose surface form is curated `GROUND como um/uma/uns/umas
+VEHICLE`.
+_Avoid_: broad comparison candidate, all como candidate
 
-**NLP Refinement Layer**:
-A post-extraction analysis layer that enriches silver candidates with structured linguistic fields while preserving the original candidate rows.
-_Avoid_: NLP filtering test, final classifier
+**Curated Ground**:
+The quality adjective or salient verb immediately before `como` that passes the
+spec-0006 allowlist.
+_Avoid_: inferred adjective, arbitrary left context
 
-**Vehicle Structure Refinement**:
-The first NLP refinement slice that turns a right-context window into a syntactic vehicle phrase and head when possible.
-_Avoid_: adjective extraction, figurative classification
+**Connector Text**:
+The literal `como um`, `como uma`, `como uns`, or `como umas` between
+`ground_text` and `vehicle_text`.
+_Avoid_: connector family, pattern label
 
-**Primary Nominal Article Candidate**:
-A silver candidate whose connector pattern gives an article cue that the right side likely starts as a noun phrase.
-_Avoid_: guaranteed simile, guaranteed noun
-
-**Primary Nominal Bare Candidate**:
-A silver candidate from a bare comparison connector whose right side may be noun-like but has weaker syntactic cues than article-gated patterns.
-_Avoid_: generic bare connector, low-quality candidate
-
-**Vehicle Phrase**:
-The readable noun phrase extracted from the right side of a comparison candidate.
-_Avoid_: right context, full clause
+**Vehicle Text**:
+The compact surface phrase after the article. It is the readable right-hand
+side shown in review tables and examples.
+_Avoid_: unbounded right context, parser phrase
 
 **Vehicle Head**:
-The main noun or pronoun inside a vehicle phrase used as the preferred aggregation unit.
-_Avoid_: full vehicle phrase, raw vehicle string
+The first token of `vehicle_text`, used as the current aggregation key for
+ground/vehicle counts.
+_Avoid_: full vehicle phrase, semantic class
 
-**Aggregate-Eligible Vehicle**:
-A vehicle head considered suitable for default vehicle-frequency charts.
-_Avoid_: all extracted vehicles, any right-context token
+**Gold Seed Dataset**:
+The kept candidate dataset emitted by the core extractor at
+`data/gold/como_article_ground_vehicle_candidates`.
+_Avoid_: final annotated dataset, classifier output
 
-**Clean Common-Noun Vehicle**:
-A vehicle head that is a common noun and passes conservative noun-vehicle rules.
-_Avoid_: proper-name vehicle, chartable vehicle
+**Analysis Output**:
+A compact derived table used to inspect dataset quality and distribution, such
+as ground counts, vehicle counts, pair counts, examples, or review samples.
+_Avoid_: notebook-only display, temporary Spark DataFrame
 
-**Chartable Vehicle**:
-A vehicle head suitable for exploratory vehicle charts, including clean common nouns and selected proper names.
-_Avoid_: clean common-noun vehicle, all extracted heads
-
-**Structural Quality Bucket**:
-A deterministic label describing the syntactic usability of a refined candidate.
-_Avoid_: figurative label, literal label, sentiment
-
-**Phase A Validation Notebook**:
-A notebook that demonstrates whether the NLP refinement layer improves vehicle structure and candidate quality.
-_Avoid_: frontend app, production dashboard
-
-**Refined Candidate Dataset**:
-A durable dataset produced by the NLP refinement layer for downstream analysis.
-_Avoid_: notebook-only result, replacement silver dataset
+**WebApp-Ready Output**:
+A stable analysis output shaped for direct frontend consumption.
+_Avoid_: exploratory scratch table, raw Parquet dump
 
 ## Relationships
 
-- A **Silver Candidate** is a kind of **Comparison Candidate**.
-- The **NLP Refinement Layer** enriches one or more **Silver Candidates**.
-- **Vehicle Structure Refinement** happens before optional ground-adjective extraction.
-- A **Primary Nominal Article Candidate** and a **Primary Nominal Bare Candidate** are both first-slice targets for **Vehicle Structure Refinement**.
-- A **Vehicle Phrase** has zero or one **Vehicle Head**.
-- An **Aggregate-Eligible Vehicle** is a **Vehicle Head** that passes default charting rules.
-- A **Clean Common-Noun Vehicle** is stricter than a **Chartable Vehicle**.
-- A **Structural Quality Bucket** is not a figurative or literal classification.
-- A **Phase A Validation Notebook** presents the **Refined Candidate Dataset** without replacing it.
-- A **Refined Candidate Dataset** preserves **Silver Candidate** identity and adds NLP-derived fields.
+- A **Bronze Segment** may contain zero or more **Como-Article Ground/Vehicle Candidates**.
+- A **Como-Article Ground/Vehicle Candidate** has one **Curated Ground**, one **Connector Text**, and one **Vehicle Text**.
+- A **Vehicle Text** has one MVP **Vehicle Head**.
+- The **Gold Seed Dataset** contains kept **Como-Article Ground/Vehicle Candidates**.
+- **Analysis Outputs** and **WebApp-Ready Outputs** are derived from the **Gold Seed Dataset**.
 
-## Example dialogue
+## Current Priorities
 
-> **Dev:** "Should Phase A delete noisy rows from the silver output?"
-> **Domain expert:** "No — Phase A is an **NLP Refinement Layer**. It should enrich **Silver Candidates** and mark quality, not replace the original extraction."
+- Improve **Vehicle Text** filtering without broadening the connector scope.
+- Add richer **Analysis Outputs** for dominance, diversity, and review quality.
+- Shape **WebApp-Ready Outputs** around ground pages, vehicle pages, pair rankings, examples, and summary metrics.
 
-## Flagged ambiguities
+## Example Dialogue
 
-- "NLP filtering" sounded like a destructive subset operation; resolved: Phase A is an **NLP Refinement Layer** that may add quality flags while preserving silver candidates.
-- "Aggregate eligible" was too broad as a single concept; resolved: Phase A distinguishes **Clean Common-Noun Vehicle** from broader **Chartable Vehicle**.
+> **Dev:** "Should we bring back `que nem` or bare `como`?"
+> **Domain expert:** "No. The current dataset is the
+> **Como-Article Ground/Vehicle Candidate** path. Improve **Vehicle Text**
+> filtering and analysis first."
