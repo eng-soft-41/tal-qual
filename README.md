@@ -51,10 +51,11 @@ After the first build, use the faster start command:
 docker compose up
 ```
 
-Open `http://localhost:8888/lab`, then open:
+Open `http://localhost:8888/lab`, then open the notebook for the run you need.
+For the frontend dataset, use the full-corpus workflow:
 
 ```text
-work/notebooks/01_como_article_ground_vehicle_mvp.ipynb
+work/notebooks/01_full_como_article_ground_vehicle_mvp.ipynb
 ```
 
 The compose file binds Jupyter and Spark UI ports to `127.0.0.1`, so the
@@ -74,7 +75,7 @@ docker compose build
 ## Source Data
 
 The real brWaC shards belong under `data/raw/`, which is ignored by Git. The
-current full-shard target is:
+one-shard development target is:
 
 ```text
 data/raw/brwac-clean-1.txt.gz
@@ -111,13 +112,27 @@ candidate windows do not cross unrelated corpus fragments.
 
 ## Core Extraction Workflow
 
-Use:
+The active frontend dataset comes from:
+
+```text
+notebooks/01_full_como_article_ground_vehicle_mvp.ipynb
+```
+
+That notebook defaults to all local clean shards:
+
+```text
+data/raw/brwac-clean-*.txt.gz
+data/bronze/brwac_segments_full
+```
+
+The smaller 01 notebooks remain useful for development and comparison:
 
 ```text
 notebooks/01_como_article_ground_vehicle_mvp.ipynb
+notebooks/01_hc_como_article_ground_vehicle_mvp.ipynb
 ```
 
-This is the active workflow. It uses the module:
+All 01 workflows use the same module:
 
 ```text
 src/tal_qual/como_article_ground_vehicle.py
@@ -140,16 +155,57 @@ TAL_QUAL_SPARK_PARALLELISM=4
 TAL_QUAL_SPARK_SHUFFLE_PARTITIONS=4
 ```
 
-For larger experiments, point the same notebook at another raw shard, a glob,
-or a separate bronze output:
+For ad hoc larger runs, point the one-shard notebook at another raw shard, a
+glob, or a separate bronze output:
 
 ```bash
-TAL_QUAL_RAW_CORPUS_INPUT=data/raw/brwac-clean-{1,2,3,4,5,6}.txt.gz
+TAL_QUAL_RAW_CORPUS_INPUT=data/raw/brwac-clean-[1-6].txt.gz
 TAL_QUAL_BRONZE_PATH=data/bronze/brwac_segments_half
+docker compose up
 ```
 
-Spark Adaptive Query Execution is enabled in the notebook to coalesce shuffle
+Spark Adaptive Query Execution is enabled in the notebooks to coalesce shuffle
 partitions for the small grouped output tables as corpus size changes.
+
+For a direct half-corpus comparison, use:
+
+```text
+notebooks/01_hc_como_article_ground_vehicle_mvp.ipynb
+```
+
+That notebook defaults to `data/raw/brwac-clean-[1-6].txt.gz` and
+`data/bronze/brwac_segments_half`, then prints the resolved raw input, bronze
+path, and source files before extraction.
+
+For the frontend build, use the full-corpus notebook:
+
+```text
+notebooks/01_full_como_article_ground_vehicle_mvp.ipynb
+```
+
+That notebook defaults to `data/raw/brwac-clean-*.txt.gz` and
+`data/bronze/brwac_segments_full`.
+
+## Frontend Dataset Decision
+
+Use the spec-0006 full-corpus outputs from
+`notebooks/01_full_como_article_ground_vehicle_mvp.ipynb` for the first
+frontend visualization build.
+
+Dataset expansion experiments around bare `como`, `que nem`, `feito`, broader
+ground windows, and spaCy candidate filtering were explored and then deferred.
+They found promising future directions, but the operational overhead and memory
+pressure were too high for the current build phase. The decision record is:
+
+```text
+docs/reports/2026-05-17-dataset-expansion-experiment-retrospective.md
+```
+
+Archived experiment notebooks live under:
+
+```text
+docs/archive/dataset-expansion-experiments/
+```
 
 ## Extraction Contract
 
@@ -254,27 +310,29 @@ These tables support:
 
 ## Near-Term Project Direction
 
-Next work should deepen the current core workflow instead of reviving the broad
-connector pipeline:
+Next work should build the frontend on the current full-corpus spec-0006
+outputs instead of reviving the broad connector pipeline:
 
-1. Better `vehicle_text` filtering.
-   Improve vehicle phrase boundaries, reject more discourse continuations, and
-   separate useful multi-token vehicles from generic tails.
+1. Frontend-ready views.
+   Build ground pages, vehicle pages, pair rankings, examples, and summary
+   metrics from the existing `outputs/como_article_*.csv` tables.
 
-2. Broader brWaC shard target.
-   Move beyond `brwac-clean-1.txt.gz` to a half-corpus or full-corpus run if
-   the current prefilter and Spark settings continue to hold up.
+2. Dataset quality surfaces.
+   Expose review status and example snippets in the frontend so noisy tails and
+   one-off vehicle heads are visible rather than hidden.
 
-3. WebApp-ready output structure.
-   Produce stable tables that a frontend can consume directly, including
-   ground pages, vehicle pages, pair rankings, examples, and summary metrics.
-
-4. Increased dataset analysis.
+3. Focused analysis.
    Add dominance, diversity, ground-family, vehicle-family, and review-quality
-   summary tables if the WebApp needs them.
+   summary tables only when the frontend needs them.
+
+4. Deferred expansion.
+   Revisit bare-`como` and spaCy-assisted filtering after the first frontend is
+   working and only with memory-safe batching.
 
 ## Useful Files
 
 - [Spec 0006](docs/specs/0006-como-article-ground-vehicle-mvp.md)
 - [Core extractor](src/tal_qual/como_article_ground_vehicle.py)
-- [Core notebook](notebooks/01_como_article_ground_vehicle_mvp.ipynb)
+- [Full-corpus notebook](notebooks/01_full_como_article_ground_vehicle_mvp.ipynb)
+- [One-shard notebook](notebooks/01_como_article_ground_vehicle_mvp.ipynb)
+- [Dataset expansion retrospective](docs/reports/2026-05-17-dataset-expansion-experiment-retrospective.md)
