@@ -127,6 +127,11 @@ The notebook uses a native Spark `rlike` prefilter before the Python
 UDF extraction. On the current machine, this made the full-shard run drop from
 about 1954 seconds to about 49 seconds.
 
+On a cold run, the notebook builds bronze if missing and then reloads the
+freshly written Parquet before extraction. This keeps the expensive raw gzip
+lineage out of candidate extraction and makes subsequent actions start from
+the splittable columnar bronze layer.
+
 The current sweet-spot Spark configuration is:
 
 ```bash
@@ -134,6 +139,17 @@ TAL_QUAL_SPARK_MASTER=local[4]
 TAL_QUAL_SPARK_PARALLELISM=4
 TAL_QUAL_SPARK_SHUFFLE_PARTITIONS=4
 ```
+
+For larger experiments, point the same notebook at another raw shard, a glob,
+or a separate bronze output:
+
+```bash
+TAL_QUAL_RAW_CORPUS_INPUT=data/raw/brwac-clean-{1,2,3,4,5,6}.txt.gz
+TAL_QUAL_BRONZE_PATH=data/bronze/brwac_segments_half
+```
+
+Spark Adaptive Query Execution is enabled in the notebook to coalesce shuffle
+partitions for the small grouped output tables as corpus size changes.
 
 ## Extraction Contract
 
