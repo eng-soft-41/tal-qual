@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
+from collections import Counter, defaultdict
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +18,20 @@ COMO_ARTICLE_GROUND_COUNTS_OUTPUT_PATH = Path("outputs/como_article_ground_count
 COMO_ARTICLE_VEHICLE_COUNTS_OUTPUT_PATH = Path("outputs/como_article_vehicle_counts.csv")
 COMO_ARTICLE_EXAMPLES_OUTPUT_PATH = Path("outputs/como_article_examples.csv")
 COMO_ARTICLE_REVIEW_SAMPLE_OUTPUT_PATH = Path("outputs/como_article_review_sample.csv")
+COMO_ARTICLE_BACKEND_EXPORT_DIR = Path("data/export/backend/comparisons/v1")
+COMO_ARTICLE_BACKEND_CANDIDATES_PATH = COMO_ARTICLE_BACKEND_EXPORT_DIR / "candidates.jsonl"
+COMO_ARTICLE_BACKEND_GROUND_VEHICLE_COUNTS_PATH = COMO_ARTICLE_BACKEND_EXPORT_DIR / "ground_vehicle_counts.json"
+COMO_ARTICLE_BACKEND_VEHICLE_GROUND_COUNTS_PATH = COMO_ARTICLE_BACKEND_EXPORT_DIR / "vehicle_ground_counts.json"
+COMO_ARTICLE_BACKEND_GROUND_COUNTS_PATH = COMO_ARTICLE_BACKEND_EXPORT_DIR / "ground_counts.json"
+COMO_ARTICLE_BACKEND_VEHICLE_COUNTS_PATH = COMO_ARTICLE_BACKEND_EXPORT_DIR / "vehicle_counts.json"
+COMO_ARTICLE_BACKEND_EXAMPLES_PATH = COMO_ARTICLE_BACKEND_EXPORT_DIR / "examples.jsonl"
+COMO_ARTICLE_BACKEND_MANIFEST_PATH = COMO_ARTICLE_BACKEND_EXPORT_DIR / "manifest.json"
+COMO_ARTICLE_BACKEND_REVIEW_SAMPLE_PATH = COMO_ARTICLE_BACKEND_EXPORT_DIR / "review_sample.jsonl"
+COMO_ARTICLE_BACKEND_REJECTED_OR_REVIEW_PATH = COMO_ARTICLE_BACKEND_EXPORT_DIR / "rejected_or_review_candidates.jsonl"
+
+DATASET_VERSION = "v1"
+BACKEND_DATASET_NAME = "tal-qual-comparisons"
+BACKEND_SCHEMA_VERSION = 1
 
 LEFT_CONTEXT_CHARS = 80
 MAX_VEHICLE_TOKENS = 5
@@ -259,6 +276,22 @@ _ROLE_CONTEXT_RE = re.compile(
     re.IGNORECASE,
 )
 _NOISE_RE = re.compile(r"https?://|www\.|[@#]|\d+%|^\d+$", re.IGNORECASE)
+_CLEANUP_HEADS = frozenset(
+    {
+        "luva",
+        "bomba",
+        "raio",
+        "pedra",
+        "rocha",
+        "pluma",
+        "touro",
+        "flecha",
+        "borboleta",
+        "pássaro",
+        "avião",
+    }
+)
+_CLAUSE_STARTS = frozenset({"é", "foi", "era", "fica", "tem", "deve", "ele", "ela", "isso"})
 
 
 @dataclass(frozen=True)
@@ -436,6 +469,160 @@ def write_como_article_csv_outputs(
     _write_csv(como_article_review_sample_dataframe(candidates_df), review_sample_path, mode)
 
 
+def cleanup_como_article_backend_candidate(row: dict[str, Any]) -> dict[str, Any]:
+    """Return one candidate row enriched with backend export cleanup metadata."""
+
+    enriched = dict(row)
+    vehicle_raw = str(enriched.get("vehicle_text_raw") or enriched.get("vehicle_text") or "")
+    raw_tokens = _word_tokens(vehicle_raw)
+    clean_tokens = list(raw_tokens)
+    cleaning_rule = "unchanged"
+    tail_tokens: list[str] = []
+    quality_reasons: list[str] = []
+
+    if len(raw_tokens) > 1:
+        clause_index = next((index for index, token in enumerate(raw_tokens[1:], start=1) if token.lower() in _CLAUSE_STARTS), None)
+        if clause_index is not None:
+            clean_tokens = raw_tokens[:clause_index]
+            tail_tokens = raw_tokens[clause_index:]
+            cleaning_rule = "trimmed_clause_start"
+            quality_reasons.append("trimmed_clause_start")
+        elif raw_tokens[0].lower() in _CLEANUP_HEADS:
+            clean_tokens = [raw_tokens[0]]
+            tail_tokens = raw_tokens[1:]
+            cleaning_rule = "trimmed_common_head_tail"
+            quality_reasons.append("trimmed_common_head_tail")
+
+    vehicle_text_clean = _compact_text(*clean_tokens)
+    vehicle_tail_text = _compact_text(*tail_tokens)
+    vehicle_head_clean = clean_tokens[0] if clean_tokens else str(enriched.get("vehicle_head") or "")
+    vehicle_head_clean_lemma = vehicle_head_clean.lower()
+    vehicle_clean_lemma = vehicle_text_clean.lower()
+
+    existing_reject_reason = str(enriched.get("reject_reason") or "")
+    if existing_reject_reason:
+        quality_label = "reject"
+        quality_reasons.append(existing_reject_reason)
+    elif _ROLE_CONTEXT_RE.search(
+        _compact_text(
+            str(enriched.get("text_before") or ""),
+            str(enriched.get("ground_text") or ""),
+            str(enriched.get("candidate_full_text") or ""),
+        )
+    ):
+        quality_label = "review"
+        quality_reasons.append("role_or_classification_context")
+    elif cleaning_rule != "unchanged":
+        quality_label = "trimmed"
+    else:
+        quality_label = "keep"
+
+    enriched.update(
+        {
+            "dataset_version": DATASET_VERSION,
+            "vehicle_text_raw": vehicle_raw,
+            "vehicle_text_clean": vehicle_text_clean,
+            "vehicle_tail_text": vehicle_tail_text,
+            "vehicle_cleaning_rule": cleaning_rule,
+            "vehicle_lemma": str(enriched.get("vehicle_lemma") or vehicle_raw.lower()),
+            "vehicle_head_clean": vehicle_head_clean,
+            "vehicle_head_clean_lemma": vehicle_head_clean_lemma,
+            "quality_label": quality_label,
+            "quality_reason": quality_reasons,
+            "visualization_ready": quality_label in {"keep", "trimmed"},
+            "needs_review": bool(enriched.get("needs_review")) or quality_label == "review",
+        }
+    )
+    if "vehicle_head_lemma" not in enriched:
+        enriched["vehicle_head_lemma"] = vehicle_head_clean_lemma
+    if "vehicle_head" not in enriched:
+        enriched["vehicle_head"] = vehicle_head_clean
+    if vehicle_clean_lemma and "vehicle_text_clean_lemma" not in enriched:
+        enriched["vehicle_text_clean_lemma"] = vehicle_clean_lemma
+    return enriched
+
+
+def prepare_como_article_backend_export_dataframe(candidates_df: Any) -> Any:
+    """Append backend cleanup fields to a Spark candidates DataFrame."""
+
+    from pyspark.sql.functions import col, struct, udf
+    from pyspark.sql.types import ArrayType, BooleanType, StringType, StructField, StructType
+
+    schema = StructType(
+        [
+            StructField("dataset_version", StringType(), nullable=False),
+            StructField("vehicle_text_raw", StringType(), nullable=False),
+            StructField("vehicle_text_clean", StringType(), nullable=False),
+            StructField("vehicle_tail_text", StringType(), nullable=False),
+            StructField("vehicle_cleaning_rule", StringType(), nullable=False),
+            StructField("vehicle_head_clean", StringType(), nullable=False),
+            StructField("vehicle_head_clean_lemma", StringType(), nullable=False),
+            StructField("quality_label", StringType(), nullable=False),
+            StructField("quality_reason", ArrayType(StringType()), nullable=False),
+            StructField("visualization_ready", BooleanType(), nullable=False),
+            StructField("needs_review", BooleanType(), nullable=False),
+        ]
+    )
+
+    def cleanup_struct(row: Any) -> dict[str, Any]:
+        cleaned = cleanup_como_article_backend_candidate(row.asDict(recursive=True))
+        return {field.name: cleaned[field.name] for field in schema.fields}
+
+    cleanup = udf(cleanup_struct, schema)
+    enriched = candidates_df.withColumn("_backend_cleanup", cleanup(struct("*")))
+    for field in schema.fieldNames():
+        enriched = enriched.withColumn(field, col(f"_backend_cleanup.{field}"))
+    return enriched.drop("_backend_cleanup")
+
+
+def write_como_article_backend_export(
+    candidates: Any,
+    export_dir: str | Path = COMO_ARTICLE_BACKEND_EXPORT_DIR,
+    generated_at: str | None = None,
+) -> dict[str, Any]:
+    """Write backend JSONL/JSON assets from Spark rows or Python dictionaries."""
+
+    rows = [_row_to_dict(row) for row in _collect_rows(candidates)]
+    cleaned_rows = [cleanup_como_article_backend_candidate(row) for row in rows]
+    export_path = Path(export_dir)
+    export_path.mkdir(parents=True, exist_ok=True)
+
+    _write_jsonl(export_path / "candidates.jsonl", (_backend_candidate_record(row) for row in cleaned_rows))
+    _write_json(export_path / "ground_vehicle_counts.json", _pair_counts(cleaned_rows, "ground_lemma", "vehicle_head_clean_lemma"))
+    _write_json(export_path / "vehicle_ground_counts.json", _pair_counts(cleaned_rows, "vehicle_head_clean_lemma", "ground_lemma"))
+    ground_counts = _single_counts(cleaned_rows, "ground_lemma", "vehicle_head_clean_lemma", "top_vehicle")
+    vehicle_counts = _single_counts(cleaned_rows, "vehicle_head_clean_lemma", "ground_lemma", "top_ground")
+    _write_json(export_path / "ground_counts.json", ground_counts)
+    _write_json(export_path / "vehicle_counts.json", vehicle_counts)
+    _write_jsonl(export_path / "examples.jsonl", (_example_record(row) for row in cleaned_rows[:5000]))
+    review_rows = [row for row in cleaned_rows if row.get("needs_review")]
+    rejected_or_review_rows = [row for row in cleaned_rows if row.get("quality_label") in {"reject", "review"}]
+    _write_jsonl(export_path / "review_sample.jsonl", (_backend_candidate_record(row) for row in review_rows[:500]))
+    _write_jsonl(export_path / "rejected_or_review_candidates.jsonl", (_backend_candidate_record(row) for row in rejected_or_review_rows))
+
+    manifest = {
+        "dataset_name": BACKEND_DATASET_NAME,
+        "dataset_version": DATASET_VERSION,
+        "pattern_type": "como_article_ground_vehicle",
+        "generated_at": generated_at or datetime.now(timezone.utc).isoformat(),
+        "source_gold_path": str(COMO_ARTICLE_GROUND_VEHICLE_OUTPUT_PATH),
+        "candidate_count": len(cleaned_rows),
+        "visualization_ready_count": sum(1 for row in cleaned_rows if row.get("visualization_ready")),
+        "ground_count": len({row.get("ground_lemma") for row in cleaned_rows if row.get("ground_lemma")}),
+        "vehicle_count": len({row.get("vehicle_head_clean_lemma") for row in cleaned_rows if row.get("vehicle_head_clean_lemma")}),
+        "ground_vehicle_pair_count": len(
+            {
+                (row.get("ground_lemma"), row.get("vehicle_head_clean_lemma"))
+                for row in cleaned_rows
+                if row.get("ground_lemma") and row.get("vehicle_head_clean_lemma")
+            }
+        ),
+        "schema_version": BACKEND_SCHEMA_VERSION,
+    }
+    _write_json(export_path / "manifest.json", manifest)
+    return manifest
+
+
 def como_article_ground_vehicle_counts_dataframe(candidates_df: Any) -> Any:
     from pyspark.sql.functions import col
 
@@ -576,6 +763,136 @@ def _candidate_id(
 ) -> str:
     identity = "|".join([source_file, str(original_line_id), str(segment_id), str(char_start), str(char_end), pattern_type])
     return hashlib.sha1(identity.encode("utf-8")).hexdigest()
+
+
+_BACKEND_CANDIDATE_FIELDS = (
+    "candidate_id",
+    "dataset_version",
+    "pattern_type",
+    "connector_text",
+    "candidate_full_text",
+    "text_before",
+    "tenor_text",
+    "tenor_lemma",
+    "tenor_confidence",
+    "ground_text",
+    "ground_lemma",
+    "ground_type",
+    "ground_source",
+    "vehicle_text_raw",
+    "vehicle_text_clean",
+    "vehicle_tail_text",
+    "vehicle_cleaning_rule",
+    "vehicle_lemma",
+    "vehicle_head",
+    "vehicle_head_lemma",
+    "vehicle_head_clean",
+    "vehicle_head_clean_lemma",
+    "vehicle_phrase_length_tokens",
+    "quality_label",
+    "quality_reason",
+    "visualization_ready",
+    "confidence",
+    "needs_review",
+    "source_file",
+    "original_line_id",
+    "segment_id",
+    "char_start",
+    "char_end",
+    "connector_start",
+    "connector_end",
+    "vehicle_start",
+    "vehicle_end",
+)
+
+
+def _collect_rows(candidates: Any) -> list[Any]:
+    if hasattr(candidates, "collect"):
+        return list(candidates.collect())
+    return list(candidates)
+
+
+def _row_to_dict(row: Any) -> dict[str, Any]:
+    if hasattr(row, "asDict"):
+        return row.asDict(recursive=True)
+    return dict(row)
+
+
+def _backend_candidate_record(row: dict[str, Any]) -> dict[str, Any]:
+    return {field: _json_value(row.get(field)) for field in _BACKEND_CANDIDATE_FIELDS}
+
+
+def _example_record(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "candidate_id": row.get("candidate_id"),
+        "ground_text": row.get("ground_text"),
+        "connector_text": row.get("connector_text"),
+        "vehicle_text_clean": row.get("vehicle_text_clean"),
+        "tenor_text": row.get("tenor_text"),
+        "candidate_full_text": row.get("candidate_full_text"),
+    }
+
+
+def _pair_counts(rows: list[dict[str, Any]], first_key: str, second_key: str) -> list[dict[str, Any]]:
+    groups: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for row in rows:
+        first = str(row.get(first_key) or "")
+        second = str(row.get(second_key) or "")
+        if first and second:
+            groups[(first, second)].append(str(row.get("candidate_id") or ""))
+    first_name = first_key
+    second_name = second_key
+    return [
+        {
+            first_name: first,
+            second_name: second,
+            "count": len(candidate_ids),
+            "example_candidate_ids": candidate_ids[:5],
+        }
+        for (first, second), candidate_ids in sorted(groups.items(), key=lambda item: (-len(item[1]), item[0][0], item[0][1]))
+    ]
+
+
+def _single_counts(rows: list[dict[str, Any]], key: str, distinct_key: str, top_prefix: str) -> list[dict[str, Any]]:
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        value = str(row.get(key) or "")
+        if value:
+            grouped[value].append(row)
+
+    records = []
+    for value, group_rows in grouped.items():
+        related_counts = Counter(str(row.get(distinct_key) or "") for row in group_rows if row.get(distinct_key))
+        if not related_counts:
+            continue
+        top_value, top_count = sorted(related_counts.items(), key=lambda item: (-item[1], item[0]))[0]
+        count = len(group_rows)
+        record = {
+            key: value,
+            "count": count,
+            f"distinct_{'vehicle' if distinct_key == 'vehicle_head_clean_lemma' else 'ground'}_count": len(related_counts),
+            f"{top_prefix}_{'head_clean_lemma' if top_prefix == 'top_vehicle' else 'lemma'}": top_value,
+            f"{top_prefix}_count": top_count,
+            f"{top_prefix}_share": round(top_count / count, 4) if count else 0,
+        }
+        records.append(record)
+    return sorted(records, key=lambda record: (-int(record["count"]), str(record[key])))
+
+
+def _write_jsonl(path: Path, records: Any) -> None:
+    with path.open("w", encoding="utf-8") as file:
+        for record in records:
+            file.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def _write_json(path: Path, data: Any) -> None:
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _json_value(value: Any) -> Any:
+    if isinstance(value, tuple):
+        return list(value)
+    return value
 
 
 def _write_csv(dataframe: Any, output_path: str | Path, mode: str) -> None:
