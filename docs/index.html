@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tal Qual — apresentações</title>
+    <style>
+      :root {
+        --ivory: #faf9f5;
+        --slate: #141413;
+        --clay: #d97757;
+        --gray-150: #f0eee6;
+        --gray-300: #d1cfc5;
+        --gray-500: #87867f;
+        --gray-700: #3d3d3a;
+        --serif: ui-serif, Georgia, "Times New Roman", serif;
+        --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        min-height: 100vh;
+        background: var(--ivory);
+        color: var(--slate);
+        font-family: var(--sans);
+        -webkit-font-smoothing: antialiased;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 48px 24px;
+      }
+      main {
+        width: 100%;
+        max-width: 820px;
+      }
+      .eyebrow {
+        font-family: var(--mono);
+        font-size: 12px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--gray-500);
+        margin-bottom: 22px;
+      }
+      h1 {
+        font-family: var(--serif);
+        font-weight: 500;
+        font-size: clamp(42px, 7vw, 72px);
+        line-height: 1.05;
+        letter-spacing: -0.01em;
+        margin-bottom: 18px;
+      }
+      .lead {
+        max-width: 640px;
+        color: var(--gray-700);
+        font-size: 18px;
+        line-height: 1.6;
+        margin-bottom: 44px;
+      }
+      .links {
+        display: grid;
+        gap: 16px;
+      }
+      a.card {
+        display: block;
+        text-decoration: none;
+        color: inherit;
+        background: #fff;
+        border: 1.5px solid var(--gray-300);
+        border-radius: 12px;
+        padding: 24px 26px;
+        transition:
+          border-color 140ms ease,
+          transform 140ms ease;
+      }
+      a.card:hover {
+        border-color: var(--clay);
+        transform: translateY(-1px);
+      }
+      .title {
+        font-family: var(--serif);
+        font-size: 25px;
+        margin-bottom: 6px;
+      }
+      .desc {
+        color: var(--gray-700);
+        line-height: 1.55;
+        font-size: 15px;
+      }
+      .path {
+        margin-top: 14px;
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--gray-500);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="eyebrow">ENGSOFT 41 · Big Data</div>
+      <h1>Apresentações</h1>
+      <p class="lead">
+        Material HTML estático para apresentar o projeto da disciplina Big Data
+        e o pipeline técnico de bronze, regex Spark e UDF de extração.
+      </p>
+
+      <div class="links">
+        <a class="card" href="bigdata-presentation-slides.html">
+          <div class="title">Apresentação principal</div>
+          <div class="desc">
+            Narrativa do projeto para Big Data: inspiração, recorte
+            metodológico, Spark, dataset e entrega final.
+          </div>
+          <div class="path">docs/bigdata-presentation-slides.html</div>
+        </a>
+
+        <a class="card" href="technical-pipeline-slides.html">
+          <div class="title">Apoio técnico</div>
+          <div class="desc">
+            Explicação detalhada da camada bronze, do regex nativo Spark e da
+            UDF de extração.
+          </div>
+          <div class="path">docs/technical-pipeline-slides.html</div>
+        </a>
+      </div>
+    </main>
+  </body>
+</html>

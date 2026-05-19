@@ -1,0 +1,1131 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tal Qual — apresentação Big Data</title>
+    <style>
+      :root {
+        --ivory: #faf9f5;
+        --slate: #141413;
+        --clay: #d97757;
+        --oat: #e3dacc;
+        --olive: #788c5d;
+        --rust: #b04a3f;
+        --gray-150: #f0eee6;
+        --gray-300: #d1cfc5;
+        --gray-500: #87867f;
+        --gray-700: #3d3d3a;
+        --serif: ui-serif, Georgia, "Times New Roman", serif;
+        --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        background: var(--ivory);
+        color: var(--slate);
+        font-family: var(--sans);
+        -webkit-font-smoothing: antialiased;
+        scroll-snap-type: y mandatory;
+        overflow-x: hidden;
+      }
+
+      .slide {
+        width: 100vw;
+        min-height: 100vh;
+        scroll-snap-align: start;
+        scroll-snap-stop: always;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 7vh 6vw;
+      }
+      .slide-inner {
+        width: 100%;
+        max-width: 980px;
+      }
+      .narrow {
+        max-width: 780px;
+      }
+      .wide {
+        max-width: 1120px;
+      }
+      .invert {
+        background: var(--slate);
+        color: var(--ivory);
+      }
+
+      .eyebrow {
+        font-family: var(--mono);
+        font-size: 12px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--gray-500);
+        margin-bottom: 24px;
+      }
+      .invert .eyebrow {
+        color: var(--gray-300);
+      }
+
+      h1,
+      h2 {
+        font-family: var(--serif);
+        font-weight: 500;
+        letter-spacing: -0.01em;
+      }
+      h1 {
+        font-size: clamp(44px, 7vw, 78px);
+        line-height: 1.02;
+        margin-bottom: 24px;
+      }
+      h2 {
+        font-size: clamp(32px, 4.8vw, 52px);
+        line-height: 1.12;
+        margin-bottom: 36px;
+      }
+      h3 {
+        font-family: var(--serif);
+        font-weight: 500;
+        font-size: 24px;
+        margin-bottom: 12px;
+      }
+      p,
+      li {
+        font-size: 17px;
+        line-height: 1.6;
+        color: var(--gray-700);
+      }
+      .invert p,
+      .invert li {
+        color: var(--gray-300);
+      }
+      .lead {
+        font-size: 19px;
+        line-height: 1.6;
+        max-width: 680px;
+      }
+      code,
+      .mono {
+        font-family: var(--mono);
+      }
+      code {
+        font-size: 0.9em;
+        background: var(--gray-150);
+        border: 1px solid var(--gray-300);
+        border-radius: 5px;
+        padding: 1px 5px;
+      }
+      .invert code {
+        background: rgba(250, 249, 245, 0.08);
+        border-color: var(--gray-700);
+        color: var(--ivory);
+      }
+
+      .byline {
+        margin-top: 52px;
+        display: flex;
+        gap: 24px;
+        color: var(--gray-500);
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+      .ornament {
+        margin-bottom: 36px;
+      }
+
+      .two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 42px;
+        align-items: start;
+      }
+      .three-col {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 18px;
+      }
+      @media (max-width: 860px) {
+        .two-col,
+        .three-col {
+          grid-template-columns: 1fr;
+        }
+        .slide {
+          padding: 48px 24px;
+        }
+      }
+
+      .card,
+      .panel {
+        border: 1.5px solid var(--gray-300);
+        border-radius: 12px;
+        background: #fff;
+        padding: 24px;
+      }
+      .invert .card {
+        background: rgba(250, 249, 245, 0.04);
+        border-color: var(--gray-700);
+      }
+      .card.hot {
+        border-color: var(--clay);
+        background: rgba(217, 119, 87, 0.08);
+      }
+      .card.ok {
+        border-color: var(--olive);
+        background: rgba(120, 140, 93, 0.1);
+      }
+
+      .list {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+      .item {
+        display: grid;
+        grid-template-columns: 14px 1fr;
+        gap: 18px;
+        padding-bottom: 18px;
+        border-bottom: 1px solid var(--gray-150);
+      }
+      .item:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+      }
+      .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--olive);
+        margin-top: 9px;
+      }
+      .dot.clay {
+        background: var(--clay);
+      }
+      .item-title {
+        font-family: var(--serif);
+        color: var(--slate);
+        font-size: 21px;
+        margin-bottom: 6px;
+      }
+
+      .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 22px;
+      }
+      .metric-label {
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--gray-500);
+        margin-bottom: 14px;
+      }
+      .metric-value {
+        font-family: var(--serif);
+        font-size: clamp(36px, 5vw, 58px);
+        line-height: 1;
+      }
+      .metric-note {
+        margin-top: 10px;
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--gray-500);
+      }
+      @media (max-width: 860px) {
+        .metric-grid {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+
+      .comparison {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 22px;
+        align-items: stretch;
+      }
+      .comparison h3 {
+        font-size: 26px;
+      }
+      .comparison ul {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .plus {
+        color: var(--olive);
+        font-family: var(--mono);
+      }
+      .minus {
+        color: var(--rust);
+        font-family: var(--mono);
+      }
+      @media (max-width: 760px) {
+        .comparison {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .formula {
+        border: 1.5px solid var(--clay);
+        background: rgba(217, 119, 87, 0.08);
+        border-radius: 14px;
+        padding: 30px;
+        font-family: var(--mono);
+        font-size: clamp(22px, 3.5vw, 36px);
+        line-height: 1.5;
+        text-align: center;
+        margin-bottom: 28px;
+      }
+      .parts {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 14px;
+      }
+      .part {
+        border-top: 1.5px solid var(--gray-300);
+        padding-top: 14px;
+      }
+      .part-label {
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--gray-500);
+        margin-bottom: 6px;
+      }
+      .part-value {
+        font-family: var(--serif);
+        font-size: 24px;
+        color: var(--slate);
+      }
+      @media (max-width: 760px) {
+        .parts {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+
+      .flow-wrap {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 300px;
+        gap: 28px;
+        align-items: start;
+      }
+      @media (max-width: 980px) {
+        .flow-wrap {
+          grid-template-columns: 1fr;
+        }
+      }
+      .canvas {
+        border: 1.5px solid var(--gray-300);
+        border-radius: 14px;
+        background: #fff;
+        padding: 24px;
+        overflow-x: auto;
+      }
+      svg.flow {
+        display: block;
+        width: 100%;
+        height: auto;
+        min-width: 660px;
+      }
+      .flow text {
+        font-family: var(--mono);
+        font-size: 12px;
+        fill: var(--slate);
+      }
+      .flow .sub {
+        font-size: 10px;
+        fill: var(--gray-500);
+      }
+      .flow .box {
+        fill: #fff;
+        stroke: var(--gray-300);
+        stroke-width: 1.5;
+      }
+      .flow .hot {
+        fill: rgba(217, 119, 87, 0.1);
+        stroke: var(--clay);
+      }
+      .flow .ok {
+        fill: rgba(120, 140, 93, 0.12);
+        stroke: var(--olive);
+      }
+      .flow .arrow {
+        stroke: var(--gray-500);
+        stroke-width: 1.5;
+        fill: none;
+        marker-end: url(#arrow);
+      }
+      .side-note {
+        border: 1.5px solid var(--gray-300);
+        border-radius: 14px;
+        background: #fff;
+        padding: 20px;
+      }
+      .side-note .meta {
+        font-family: var(--mono);
+        color: var(--gray-500);
+        font-size: 12px;
+        margin-bottom: 12px;
+      }
+
+      .walkthrough {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 280px;
+        gap: 34px;
+      }
+      @media (max-width: 960px) {
+        .walkthrough {
+          grid-template-columns: 1fr;
+        }
+      }
+      .step {
+        display: grid;
+        grid-template-columns: 42px 1fr;
+        gap: 18px;
+        padding: 18px 0;
+        border-bottom: 1.5px solid var(--gray-150);
+      }
+      .step:last-child {
+        border-bottom: none;
+      }
+      .badge {
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        border: 1.5px solid var(--gray-300);
+        background: var(--oat);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: var(--mono);
+        font-weight: 700;
+        color: var(--slate);
+      }
+      .step.hot .badge {
+        background: rgba(217, 119, 87, 0.14);
+        border-color: var(--clay);
+        color: var(--clay);
+      }
+      .step-loc {
+        font-family: var(--mono);
+        font-size: 13px;
+        color: var(--slate);
+        margin-bottom: 6px;
+      }
+      details.snippet summary {
+        list-style: none;
+        cursor: pointer;
+        font-family: var(--mono);
+        color: var(--gray-500);
+        font-size: 12px;
+        margin-top: 6px;
+      }
+      details.snippet summary::-webkit-details-marker {
+        display: none;
+      }
+      details.snippet summary::before {
+        content: "▸ ";
+        font-size: 10px;
+      }
+      details.snippet[open] summary::before {
+        content: "▾ ";
+      }
+      pre.code {
+        margin-top: 10px;
+        background: var(--slate);
+        color: #e8e6dc;
+        border-radius: 8px;
+        padding: 14px 16px;
+        overflow-x: auto;
+        font-family: var(--mono);
+        font-size: 12px;
+        line-height: 1.65;
+      }
+      .kw {
+        color: #c9b98a;
+      }
+      .str {
+        color: #a8bc8c;
+      }
+      .dim {
+        color: var(--gray-500);
+      }
+
+      .quote {
+        font-family: var(--serif);
+        font-size: clamp(28px, 4vw, 44px);
+        line-height: 1.25;
+        color: var(--ivory);
+        margin-bottom: 24px;
+      }
+      .footnote {
+        margin-top: 44px;
+        color: var(--gray-500);
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+      #counter {
+        position: fixed;
+        right: 26px;
+        bottom: 22px;
+        font-family: var(--mono);
+        color: var(--gray-500);
+        font-size: 12px;
+        z-index: 10;
+        user-select: none;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="slide" id="s1">
+      <div class="slide-inner narrow">
+        <svg
+          class="ornament"
+          width="58"
+          height="58"
+          viewBox="0 0 58 58"
+          aria-hidden="true"
+        >
+          <circle
+            cx="29"
+            cy="29"
+            r="23"
+            fill="none"
+            stroke="#D1CFC5"
+            stroke-width="1.5"
+          />
+          <path
+            d="M15 29 H43 M29 15 V43"
+            stroke="#D97757"
+            stroke-width="1.5"
+            stroke-linecap="round"
+          />
+          <circle cx="29" cy="29" r="3.5" fill="#141413" />
+        </svg>
+        <div class="eyebrow">Projeto Final · Big Data</div>
+        <h1>Comparações em português a partir de um corpus web</h1>
+        <p class="lead">
+          Da inspiração no The Pudding a um pipeline com Spark, recorte
+          linguístico, exportação versionada e visualização interativa.
+        </p>
+        <div class="byline">
+          <span>Ronalson Filho</span>
+          <span>e</span>
+          <span>Yago Massaroni</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="s2">
+      <div class="slide-inner">
+        <div class="eyebrow">Começar pelo resultado</div>
+        <h2>O produto final é uma história visual</h2>
+        <div class="two-col">
+          <div>
+            <ul class="list">
+              <li class="item">
+                <span class="dot"></span>
+                <div>
+                  <div class="item-title">Completar uma comparação</div>
+                  <p>
+                    O usuário entra no papel de quem escreve: "A ideia caiu como
+                    uma ____".
+                  </p>
+                </div>
+              </li>
+              <li class="item">
+                <span class="dot"></span>
+                <div>
+                  <div class="item-title">Ver impressões digitais</div>
+                  <p>
+                    Cada qualidade mostra sua distribuição de comparantes: luva,
+                    bomba, pedra, raio.
+                  </p>
+                </div>
+              </li>
+              <li class="item">
+                <span class="dot"></span>
+                <div>
+                  <div class="item-title">Comparar clichês</div>
+                  <p>
+                    Algumas qualidades são dominadas por uma imagem; outras se
+                    espalham.
+                  </p>
+                </div>
+              </li>
+            </ul>
+          </div>
+          <div class="card hot">
+            <h3>Mas a pergunta da aula é outra</h3>
+            <p>
+              Como transformar texto massivo, ambíguo e ruidoso em um conjunto
+              pequeno, confiável e analisável?
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="s3">
+      <div class="slide-inner">
+        <div class="eyebrow">Inspiração</div>
+        <h2>The Pudding reduziu símiles a pares mensuráveis</h2>
+        <div class="formula">as&nbsp;[quality]&nbsp;as&nbsp;[vehicle]</div>
+        <div class="two-col">
+          <div class="card">
+            <h3>Modelo conceitual</h3>
+            <p>
+              No vocabulário do projeto, traduzimos <strong>ground</strong> como
+              <strong>qualidade</strong> e <strong>vehicle</strong> como
+              <strong>comparante</strong> ou
+              <strong>imagem comparativa</strong>.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Adaptação</h3>
+            <p>
+              Em português, queríamos observar padrões como
+              <code>forte como um touro</code> e
+              <code>caiu como uma luva</code>.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="s4">
+      <div class="slide-inner">
+        <div class="eyebrow">Plano inicial</div>
+        <h2>A primeira hipótese era ampla demais</h2>
+        <div class="three-col">
+          <div class="card">
+            <h3>Corpus</h3>
+            <p>
+              Começar por literatura em português, inspirado no corpus ficcional
+              do The Pudding.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Conectores</h3>
+            <p>
+              Capturar <code>como</code>, <code>que nem</code>,
+              <code>feito</code>, <code>igual</code>, <code>parece</code>.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Realidade</h3>
+            <p>
+              Dataset literário amplo não ficou operacional; brWaC trouxe
+              escala, mas também ruído.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="s5">
+      <div class="slide-inner">
+        <div class="eyebrow">Problema de dados</div>
+        <h2><code>como</code> é frequente, mas ambíguo</h2>
+        <div class="two-col">
+          <div>
+            <ul class="list">
+              <li class="item">
+                <span class="dot clay"></span>
+                <div>
+                  <div class="item-title">Classificação</div>
+                  <p><code>trabalha como advogado</code></p>
+                </div>
+              </li>
+              <li class="item">
+                <span class="dot clay"></span>
+                <div>
+                  <div class="item-title">Nomeação</div>
+                  <p><code>conhecido como X</code></p>
+                </div>
+              </li>
+              <li class="item">
+                <span class="dot clay"></span>
+                <div>
+                  <div class="item-title">Listagem ou adição</div>
+                  <p>
+                    <code>assim como</code>, <code>como a flauta, a viola</code>
+                  </p>
+                </div>
+              </li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Experimentos</h3>
+            <p>
+              O termo <code>"como"</code> trouxe volume, mas também muito ruído.
+              <code>"que nem"</code> e <code>"feito"</code> encontraram bons
+              exemplos, porém com muitos falsos positivos. spaCy e LLM
+              ajudariam, mas pesavam no fluxo local.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide invert" id="s6">
+      <div class="slide-inner narrow">
+        <div class="eyebrow">Virada metodológica</div>
+        <p class="quote">
+          A pergunta deixou de ser "como capturar comparações?" e virou "como
+          extrair um subconjunto confiável, mensurável e visualizável?"
+        </p>
+        <p class="lead">
+          Esse recorte é a parte mais importante do projeto para Big Data:
+          define o que entra, o que fica fora, quanto custa processar e como
+          auditar a qualidade.
+        </p>
+      </div>
+    </section>
+
+    <section class="slide" id="s7">
+      <div class="slide-inner">
+        <div class="eyebrow">Contrato final</div>
+        <h2>Um padrão estreito, mas reprodutível</h2>
+        <div class="formula">
+          QUALIDADE&nbsp;como&nbsp;um/uma/uns/umas&nbsp;COMPARANTE
+        </div>
+        <div class="parts">
+          <div class="part">
+            <div class="part-label">contexto</div>
+            <div class="part-value">A ideia</div>
+          </div>
+          <div class="part">
+            <div class="part-label">qualidade/verbo</div>
+            <div class="part-value">caiu</div>
+          </div>
+          <div class="part">
+            <div class="part-label">conector</div>
+            <div class="part-value">como uma</div>
+          </div>
+          <div class="part">
+            <div class="part-label">comparante</div>
+            <div class="part-value">luva</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="s8">
+      <div class="slide-inner">
+        <div class="eyebrow">Trade-off</div>
+        <h2>Menos recall, mais precisão</h2>
+        <div class="comparison">
+          <div class="card hot">
+            <h3>Abordagem ampla</h3>
+            <ul>
+              <li><span class="plus">+</span> mais volume bruto</li>
+              <li><span class="minus">-</span> mais ambiguidade</li>
+              <li><span class="minus">-</span> mais falsos positivos</li>
+              <li><span class="minus">-</span> custo local maior</li>
+            </ul>
+          </div>
+          <div class="card ok">
+            <h3>Abordagem estreita</h3>
+            <ul>
+              <li>
+                <span class="minus">-</span> perde casos válidos como
+                <code>claro como água</code>
+              </li>
+              <li><span class="plus">+</span> melhora auditoria</li>
+              <li><span class="plus">+</span> sustenta agregações</li>
+              <li>
+                <span class="plus">+</span> entrega visualização confiável
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="s9">
+      <div class="slide-inner">
+        <div class="eyebrow">Resultados do recorte</div>
+        <h2>O dataset final é pequeno, mas coerente</h2>
+        <div class="metric-grid">
+          <div class="metric">
+            <div class="metric-label">candidatos</div>
+            <div class="metric-value">2.136</div>
+            <div class="metric-note">extraídos</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">visualização</div>
+            <div class="metric-value">2.133</div>
+            <div class="metric-note">prontos</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">pares</div>
+            <div class="metric-value">940</div>
+            <div class="metric-note">qualidade → comparante</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">qualidades</div>
+            <div class="metric-value">40</div>
+            <div class="metric-note">adjetivos/verbos</div>
+          </div>
+        </div>
+        <div class="footnote">
+          Também foram identificados 742 comparantes agregados pelo lema
+          principal.
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="s10">
+      <div class="slide-inner wide">
+        <div class="eyebrow">Fluxo da solução</div>
+        <h2>Do brWaC à visualização</h2>
+        <div class="flow-wrap">
+          <div>
+            <div class="canvas">
+              <svg
+                class="flow"
+                viewBox="0 0 760 430"
+                role="img"
+                aria-label="Fluxo do pipeline Tal Qual"
+              >
+                <defs>
+                  <marker
+                    id="arrow"
+                    viewBox="0 0 10 10"
+                    refX="9"
+                    refY="5"
+                    markerWidth="7"
+                    markerHeight="7"
+                    orient="auto-start-reverse"
+                  >
+                    <path d="M0,0 L10,5 L0,10 z" fill="#87867F" />
+                  </marker>
+                </defs>
+                <line class="arrow" x1="150" y1="80" x2="240" y2="80" />
+                <line class="arrow" x1="390" y1="80" x2="480" y2="80" />
+                <line class="arrow" x1="610" y1="104" x2="610" y2="156" />
+                <line class="arrow" x1="610" y1="224" x2="610" y2="276" />
+                <line class="arrow" x1="520" y1="310" x2="400" y2="310" />
+                <line class="arrow" x1="250" y1="310" x2="150" y2="310" />
+
+                <g>
+                  <rect
+                    class="box"
+                    x="30"
+                    y="48"
+                    width="120"
+                    height="64"
+                    rx="10"
+                  />
+                  <text x="90" y="76" text-anchor="middle">brWaC</text>
+                  <text class="sub" x="90" y="92" text-anchor="middle">
+                    .txt.gz
+                  </text>
+                </g>
+                <g>
+                  <rect
+                    class="box"
+                    x="240"
+                    y="48"
+                    width="150"
+                    height="64"
+                    rx="10"
+                  />
+                  <text x="315" y="76" text-anchor="middle">Bronze</text>
+                  <text class="sub" x="315" y="92" text-anchor="middle">
+                    segmentos + origem
+                  </text>
+                </g>
+                <g>
+                  <rect
+                    class="box hot"
+                    x="480"
+                    y="48"
+                    width="160"
+                    height="64"
+                    rx="10"
+                  />
+                  <text x="560" y="76" text-anchor="middle">Spark rlike</text>
+                  <text class="sub" x="560" y="92" text-anchor="middle">
+                    pré-filtro barato
+                  </text>
+                </g>
+                <g>
+                  <rect
+                    class="box hot"
+                    x="520"
+                    y="156"
+                    width="180"
+                    height="68"
+                    rx="10"
+                  />
+                  <text x="610" y="184" text-anchor="middle">Python UDF</text>
+                  <text class="sub" x="610" y="200" text-anchor="middle">
+                    contrato linguístico
+                  </text>
+                </g>
+                <g>
+                  <rect
+                    class="box"
+                    x="520"
+                    y="276"
+                    width="180"
+                    height="68"
+                    rx="10"
+                  />
+                  <text x="610" y="304" text-anchor="middle">Gold dataset</text>
+                  <text class="sub" x="610" y="320" text-anchor="middle">
+                    candidatos + auditoria
+                  </text>
+                </g>
+                <g>
+                  <rect
+                    class="box"
+                    x="250"
+                    y="276"
+                    width="150"
+                    height="68"
+                    rx="10"
+                  />
+                  <text x="325" y="304" text-anchor="middle">Agregados</text>
+                  <text class="sub" x="325" y="320" text-anchor="middle">
+                    counts + exemplos
+                  </text>
+                </g>
+                <g>
+                  <rect
+                    class="box ok"
+                    x="30"
+                    y="276"
+                    width="120"
+                    height="68"
+                    rx="10"
+                  />
+                  <text x="90" y="304" text-anchor="middle">API + UI</text>
+                  <text class="sub" x="90" y="320" text-anchor="middle">
+                    história visual
+                  </text>
+                </g>
+              </svg>
+            </div>
+          </div>
+          <aside class="side-note">
+            <div class="meta">ponto Big Data</div>
+            <h3>Reduzir antes de enriquecer</h3>
+            <p>
+              O Spark faz o trabalho barato e escalável: ler, segmentar e
+              pré-filtrar. A regra Python, mais expressiva, roda só nas linhas
+              plausíveis.
+            </p>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="s11">
+      <div class="slide-inner wide">
+        <div class="eyebrow">Detalhes importantes do notebook</div>
+        <h2>O notebook separa escala, regra e entrega</h2>
+        <div class="walkthrough">
+          <main>
+            <div class="step">
+              <div class="badge">1</div>
+              <div>
+                <div class="step-loc">
+                  notebooks/01_full_como_article_ground_vehicle_mvp.ipynb
+                </div>
+                <p>
+                  Carrega ou constrói o bronze a partir de todos os shards
+                  brWaC, mantendo origem dos dados e fronteiras de segmento.
+                </p>
+                <details class="snippet">
+                  <summary>show source</summary>
+                  <pre class="code">
+bronze_df = load_or_build_bronze_dataframe(spark, raw_path, bronze_path)</pre
+                  >
+                </details>
+              </div>
+            </div>
+            <div class="step hot">
+              <div class="badge">2</div>
+              <div>
+                <div class="step-loc">
+                  prefilter_como_article_ground_vehicle_bronze_dataframe()
+                </div>
+                <p>
+                  Aplica regex nativa do Spark antes da UDF. Essa é a economia
+                  central: filtrar em engine distribuível antes de entrar em
+                  Python.
+                </p>
+                <details class="snippet" open>
+                  <summary>show source</summary>
+                  <pre
+                    class="code"
+                  ><span class="kw">def</span> prefilter_como_article_ground_vehicle_bronze_dataframe(bronze_df):
+    <span class="kw">return</span> bronze_df.where(col(<span class="str">"match_text"</span>).rlike(_SPARK_PREFILTER_RE))</pre>
+                </details>
+              </div>
+            </div>
+            <div class="step">
+              <div class="badge">3</div>
+              <div>
+                <div class="step-loc">
+                  prepare_como_article_ground_vehicle_dataframe()
+                </div>
+                <p>
+                  A UDF extrai o candidato final: qualidade, conector,
+                  comparante, posições no texto, confiança e campos para
+                  revisão.
+                </p>
+                <details class="snippet">
+                  <summary>show source</summary>
+                  <pre
+                    class="code"
+                  >extract_rows = udf(extract_como_article_ground_vehicle_rows, schema)
+bronze_df.withColumn(<span class="str">"candidate"</span>, explode(extract_rows(...))).select(<span class="str">"candidate.*"</span>)</pre>
+                </details>
+              </div>
+            </div>
+            <div class="step">
+              <div class="badge">4</div>
+              <div>
+                <div class="step-loc">write_como_article_backend_export()</div>
+                <p>
+                  Exporta JSONL/JSON versionado para backend, sem exigir que API
+                  ou frontend conheçam Spark ou Parquet.
+                </p>
+                <details class="snippet">
+                  <summary>show source</summary>
+                  <pre class="code">
+write_como_article_backend_export(
+    candidates_df,
+    export_dir=REPO_ROOT / COMO_ARTICLE_BACKEND_EXPORT_DIR,
+)</pre
+                  >
+                </details>
+              </div>
+            </div>
+          </main>
+          <aside>
+            <div class="panel">
+              <h3>Arquivos-chave</h3>
+              <p><code>notebooks/01_full_...</code></p>
+              <p><code>src/tal_qual/como_article_ground_vehicle.py</code></p>
+              <p><code>data/export/backend/comparisons/v1/</code></p>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="s12">
+      <div class="slide-inner">
+        <div class="eyebrow">Entrega final</div>
+        <h2>Backend e frontend são a prova de uso</h2>
+        <div class="two-col">
+          <div class="card">
+            <h3>Export/API</h3>
+            <p>
+              O pipeline escreve <code>candidates.jsonl</code>, agregados JSON e
+              <code>manifest.json</code>. O backend importa, valida com Zod,
+              grava em MongoDB e expõe <code>/comparisons/*</code>.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Visualização</h3>
+            <p>
+              O React consome a API e mostra interações, exemplos, impressões
+              digitais, concentração de clichês e especialistas/generalistas.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide invert" id="s13">
+      <div class="slide-inner narrow">
+        <div class="eyebrow">Fechamento</div>
+        <p class="quote">
+          Big Data não foi só processar mais texto. Foi decidir qual pergunta dá
+          para responder bem.
+        </p>
+        <p class="lead">
+          O Tal Qual mostra uma cadeia completa: corpus grande, recorte
+          linguístico, pré-filtro Spark, extração auditável, agregação e
+          visualização.
+        </p>
+        <div class="footnote">
+          Mensagem final: menos volume pode ser melhor quando aumenta precisão,
+          rastreabilidade e capacidade de explicar os resultados.
+        </div>
+      </div>
+    </section>
+
+    <div id="counter">1 / 13</div>
+
+    <script>
+      (function () {
+        const slides = Array.from(document.querySelectorAll(".slide"));
+        const counter = document.getElementById("counter");
+        let current = 0;
+
+        function go(i) {
+          current = Math.max(0, Math.min(slides.length - 1, i));
+          slides[current].scrollIntoView({ behavior: "smooth" });
+        }
+
+        document.addEventListener("keydown", function (event) {
+          if (
+            event.key === "ArrowRight" ||
+            event.key === "ArrowDown" ||
+            event.key === " "
+          ) {
+            event.preventDefault();
+            go(current + 1);
+          }
+          if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+            event.preventDefault();
+            go(current - 1);
+          }
+        });
+
+        const observer = new IntersectionObserver(
+          function (entries) {
+            entries.forEach(function (entry) {
+              if (!entry.isIntersecting) return;
+              current = slides.indexOf(entry.target);
+              counter.textContent = current + 1 + " / " + slides.length;
+            });
+          },
+          { threshold: 0.62 },
+        );
+
+        slides.forEach(function (slide) {
+          observer.observe(slide);
+        });
+
+        const snippets = document.querySelectorAll("details.snippet");
+        snippets.forEach(function (detail) {
+          detail.addEventListener("toggle", function () {
+            if (!detail.open) return;
+            snippets.forEach(function (other) {
+              if (other !== detail) other.open = false;
+            });
+          });
+        });
+      })();
+    </script>
+  </body>
+</html>

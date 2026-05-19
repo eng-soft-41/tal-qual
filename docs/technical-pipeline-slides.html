@@ -1,0 +1,971 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tal Qual — Bronze, regex Spark e UDF</title>
+    <style>
+      :root {
+        --ivory: #faf9f5;
+        --slate: #141413;
+        --clay: #d97757;
+        --oat: #e3dacc;
+        --olive: #788c5d;
+        --rust: #b04a3f;
+        --gray-150: #f0eee6;
+        --gray-300: #d1cfc5;
+        --gray-500: #87867f;
+        --gray-700: #3d3d3a;
+        --serif: ui-serif, Georgia, "Times New Roman", serif;
+        --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        background: var(--ivory);
+        color: var(--slate);
+        font-family: var(--sans);
+        -webkit-font-smoothing: antialiased;
+        scroll-snap-type: y mandatory;
+        overflow-x: hidden;
+      }
+
+      .slide {
+        min-height: 100vh;
+        width: 100vw;
+        scroll-snap-align: start;
+        scroll-snap-stop: always;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 7vh 6vw;
+      }
+      .slide-inner {
+        width: 100%;
+        max-width: 980px;
+      }
+      .narrow {
+        max-width: 780px;
+      }
+      .wide {
+        max-width: 1120px;
+      }
+      .invert {
+        background: var(--slate);
+        color: var(--ivory);
+      }
+
+      .eyebrow {
+        font-family: var(--mono);
+        font-size: 12px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--gray-500);
+        margin-bottom: 24px;
+      }
+      .invert .eyebrow {
+        color: var(--gray-300);
+      }
+
+      h1,
+      h2,
+      h3 {
+        font-family: var(--serif);
+        font-weight: 500;
+        letter-spacing: -0.01em;
+        color: var(--slate);
+      }
+      .invert h1,
+      .invert h2,
+      .invert h3 {
+        color: var(--ivory);
+      }
+      h1 {
+        font-size: clamp(44px, 7vw, 76px);
+        line-height: 1.03;
+        margin-bottom: 22px;
+      }
+      h2 {
+        font-size: clamp(32px, 4.8vw, 52px);
+        line-height: 1.12;
+        margin-bottom: 34px;
+      }
+      h3 {
+        font-size: 24px;
+        margin-bottom: 12px;
+      }
+      p,
+      li {
+        font-size: 17px;
+        line-height: 1.6;
+        color: var(--gray-700);
+      }
+      .invert p,
+      .invert li {
+        color: var(--gray-300);
+      }
+      .lead {
+        font-size: 19px;
+        line-height: 1.6;
+        max-width: 720px;
+      }
+      code,
+      pre {
+        font-family: var(--mono);
+      }
+      code {
+        font-size: 0.9em;
+        background: var(--gray-150);
+        border: 1px solid var(--gray-300);
+        border-radius: 5px;
+        padding: 1px 5px;
+      }
+      .invert code {
+        background: rgba(250, 249, 245, 0.08);
+        border-color: var(--gray-700);
+        color: var(--ivory);
+      }
+
+      .ornament {
+        margin-bottom: 34px;
+      }
+      .byline {
+        margin-top: 50px;
+        display: flex;
+        gap: 24px;
+        color: var(--gray-500);
+        font-family: var(--mono);
+        font-size: 12px;
+        flex-wrap: wrap;
+      }
+
+      .flow {
+        border: 1.5px solid var(--gray-300);
+        border-radius: 14px;
+        background: #fff;
+        padding: 24px;
+        overflow-x: auto;
+      }
+      svg.pipeline {
+        display: block;
+        width: 100%;
+        height: auto;
+        min-width: 720px;
+      }
+      .pipeline text {
+        font-family: var(--mono);
+        font-size: 12px;
+        fill: var(--slate);
+      }
+      .pipeline .sub {
+        font-size: 10px;
+        fill: var(--gray-500);
+      }
+      .pipeline .box {
+        fill: #fff;
+        stroke: var(--gray-300);
+        stroke-width: 1.5;
+      }
+      .pipeline .hot {
+        fill: rgba(217, 119, 87, 0.1);
+        stroke: var(--clay);
+      }
+      .pipeline .ok {
+        fill: rgba(120, 140, 93, 0.12);
+        stroke: var(--olive);
+      }
+      .pipeline .arrow {
+        stroke: var(--gray-500);
+        stroke-width: 1.5;
+        fill: none;
+        marker-end: url(#arrow);
+      }
+
+      .two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 34px;
+        align-items: start;
+        /*margin: 12px 0;*/
+      }
+      .three-col {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 18px;
+      }
+      @media (max-width: 860px) {
+        .two-col,
+        .three-col {
+          grid-template-columns: 1fr;
+        }
+        .slide {
+          padding: 48px 24px;
+        }
+      }
+
+      .card {
+        border: 1.5px solid var(--gray-300);
+        border-radius: 12px;
+        background: #fff;
+        padding: 24px;
+      }
+      .card.hot {
+        border-color: var(--clay);
+        background: rgba(217, 119, 87, 0.08);
+      }
+      .card.ok {
+        border-color: var(--olive);
+        background: rgba(120, 140, 93, 0.1);
+      }
+      .card h3 {
+        font-size: 25px;
+      }
+
+      .fields {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+        margin-top: 18px;
+      }
+      .field {
+        border-top: 1.5px solid var(--gray-300);
+        padding-top: 12px;
+      }
+      .field-name {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--slate);
+        margin-bottom: 5px;
+      }
+      .field-desc {
+        font-size: 13px;
+        color: var(--gray-500);
+        line-height: 1.45;
+      }
+      @media (max-width: 760px) {
+        .fields {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .quote {
+        font-family: var(--serif);
+        font-size: clamp(30px, 4.3vw, 48px);
+        line-height: 1.25;
+        color: var(--ivory);
+        margin-bottom: 24px;
+      }
+
+      pre.code {
+        background: var(--slate);
+        color: #e8e6dc;
+        border-radius: 9px;
+        padding: 16px 18px;
+        overflow-x: auto;
+        font-family: var(--mono);
+        font-size: 13px;
+        line-height: 1.65;
+        margin: 14px 0;
+      }
+      .kw {
+        color: #c9b98a;
+      }
+      .str {
+        color: #a8bc8c;
+      }
+      .dim {
+        color: var(--gray-500);
+      }
+      .callout {
+        border-left: 4px solid var(--clay);
+        padding-left: 22px;
+        margin-top: 28px;
+      }
+      .callout p {
+        font-family: var(--serif);
+        font-size: 25px;
+        line-height: 1.35;
+        color: var(--slate);
+      }
+
+      .list {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+      .item {
+        display: grid;
+        grid-template-columns: 34px 1fr;
+        gap: 18px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--gray-150);
+      }
+      .item:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+      }
+      .badge {
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        background: var(--oat);
+        border: 1.5px solid var(--gray-300);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: var(--mono);
+        font-weight: 700;
+        color: var(--slate);
+      }
+
+      .example {
+        font-family: var(--mono);
+        font-size: clamp(20px, 3vw, 32px);
+        line-height: 1.6;
+        border: 1.5px solid var(--gray-300);
+        border-radius: 14px;
+        padding: 28px;
+        background: #fff;
+        margin-bottom: 28px;
+      }
+      .mark {
+        background: #f5e090;
+        border-radius: 4px;
+        padding: 2px 6px;
+      }
+      .bad {
+        color: var(--rust);
+      }
+      .good {
+        color: var(--olive);
+      }
+
+      .qa {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+      }
+      .qa .card p:first-of-type {
+        font-family: var(--serif);
+        font-size: 21px;
+        line-height: 1.35;
+        color: var(--slate);
+        margin-bottom: 12px;
+      }
+      @media (max-width: 860px) {
+        .qa {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      #counter {
+        position: fixed;
+        right: 26px;
+        bottom: 22px;
+        font-family: var(--mono);
+        color: var(--gray-500);
+        font-size: 12px;
+        z-index: 10;
+        user-select: none;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="slide" id="s1">
+      <div class="slide-inner narrow">
+        <svg
+          class="ornament"
+          width="58"
+          height="58"
+          viewBox="0 0 58 58"
+          aria-hidden="true"
+        >
+          <circle
+            cx="29"
+            cy="29"
+            r="23"
+            fill="none"
+            stroke="#D1CFC5"
+            stroke-width="1.5"
+          />
+          <path
+            d="M15 29 H43 M29 15 V43"
+            stroke="#D97757"
+            stroke-width="1.5"
+            stroke-linecap="round"
+          />
+          <circle cx="29" cy="29" r="3.5" fill="#141413" />
+        </svg>
+        <div class="eyebrow">Tal Qual · apoio técnico</div>
+        <h1>Bronze, regex Spark e UDF de extração</h1>
+        <p class="lead">
+          Uma apresentação de backup para explicar como o notebook transforma
+          brWaC bruto em candidatos de comparação auditáveis.
+        </p>
+        <div class="byline">
+          <span>notebook 01_full</span>
+          <span>src/tal_qual/bronze.py</span>
+          <span>como_article_ground_vehicle.py</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="s2">
+      <div class="slide-inner wide">
+        <div class="eyebrow">Visão geral</div>
+        <h2>Primeiro reduzir, depois enriquecer</h2>
+        <div class="flow">
+          <svg
+            class="pipeline"
+            viewBox="0 0 880 220"
+            role="img"
+            aria-label="Pipeline bronze regex UDF"
+          >
+            <defs>
+              <marker
+                id="arrow"
+                viewBox="0 0 10 10"
+                refX="9"
+                refY="5"
+                markerWidth="7"
+                markerHeight="7"
+                orient="auto-start-reverse"
+              >
+                <path d="M0,0 L10,5 L0,10 z" fill="#87867F" />
+              </marker>
+            </defs>
+            <line class="arrow" x1="130" y1="95" x2="190" y2="95" />
+            <line class="arrow" x1="320" y1="95" x2="380" y2="95" />
+            <line class="arrow" x1="520" y1="95" x2="580" y2="95" />
+            <line class="arrow" x1="710" y1="95" x2="770" y2="95" />
+
+            <g>
+              <rect class="box" x="20" y="58" width="110" height="74" rx="10" />
+              <text x="75" y="90" text-anchor="middle">brWaC</text>
+              <text class="sub" x="75" y="108" text-anchor="middle">
+                .txt.gz
+              </text>
+            </g>
+            <g>
+              <rect
+                class="box"
+                x="190"
+                y="58"
+                width="130"
+                height="74"
+                rx="10"
+              />
+              <text x="255" y="90" text-anchor="middle">Bronze</text>
+              <text class="sub" x="255" y="108" text-anchor="middle">
+                segmentos
+              </text>
+            </g>
+            <g>
+              <rect
+                class="box hot"
+                x="380"
+                y="58"
+                width="140"
+                height="74"
+                rx="10"
+              />
+              <text x="450" y="90" text-anchor="middle">Spark rlike</text>
+              <text class="sub" x="450" y="108" text-anchor="middle">
+                peneira grossa
+              </text>
+            </g>
+            <g>
+              <rect
+                class="box hot"
+                x="580"
+                y="58"
+                width="130"
+                height="74"
+                rx="10"
+              />
+              <text x="645" y="90" text-anchor="middle">UDF Python</text>
+              <text class="sub" x="645" y="108" text-anchor="middle">
+                peneira fina
+              </text>
+            </g>
+            <g>
+              <rect
+                class="box ok"
+                x="770"
+                y="58"
+                width="90"
+                height="74"
+                rx="10"
+              />
+              <text x="815" y="90" text-anchor="middle">Gold</text>
+              <text class="sub" x="815" y="108" text-anchor="middle">
+                dataset
+              </text>
+            </g>
+          </svg>
+        </div>
+        <div class="callout">
+          <p>
+            O Spark faz o trabalho barato e paralelo. Python entra só quando a
+            linha já parece promissora.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="s3">
+      <div class="slide-inner">
+        <div class="eyebrow">Camada bronze</div>
+        <h2>Bronze é texto preparado, não dataset final</h2>
+        <div class="two-col">
+          <div class="card">
+            <h3>Entrada</h3>
+            <p>
+              Arquivos comprimidos do brWaC em
+              <code>data/raw/brwac-clean-*.txt.gz</code>, lidos diretamente pelo
+              Spark.
+            </p>
+            <pre class="code">spark.read.text(str(input_path))</pre>
+          </div>
+          <div class="card ok">
+            <h3>Saída</h3>
+            <p>
+              Segmentos normalizados com origem rastreável, prontos para busca e
+              extração.
+            </p>
+            <pre class="code">bronze_df.write.parquet(...)</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="s4">
+      <div class="slide-inner">
+        <div class="eyebrow">Origem e fronteiras</div>
+        <h2>O bronze preserva de onde cada trecho veio</h2>
+        <div class="fields">
+          <div class="field">
+            <div class="field-name">source_file</div>
+            <div class="field-desc">arquivo do brWaC que originou o trecho</div>
+          </div>
+          <div class="field">
+            <div class="field-name">original_line_id</div>
+            <div class="field-desc">linha lida pelo Spark no arquivo bruto</div>
+          </div>
+          <div class="field">
+            <div class="field-name">segment_id</div>
+            <div class="field-desc">
+              pedaço criado depois da divisão por &lt;END&gt;
+            </div>
+          </div>
+        </div>
+        <div class="callout">
+          <p>
+            Esses campos permitem auditar uma comparação depois que ela vira
+            linha no dataset final.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="s5">
+      <div class="slide-inner">
+        <div class="eyebrow">Fronteira de segmento</div>
+        <h2>Por que dividir por <code>&lt;END&gt;</code>?</h2>
+        <div class="example">
+          ... fim de um texto <span class="mark">&lt;END&gt;</span> começo de
+          outro texto ...
+        </div>
+        <div class="two-col">
+          <div class="card hot">
+            <h3>Sem dividir</h3>
+            <p>
+              A extração poderia juntar o final de um documento com o início de
+              outro e criar uma comparação falsa.
+            </p>
+          </div>
+          <div class="card ok">
+            <h3>Dividindo</h3>
+            <p>
+              Cada segmento é processado isoladamente. Uma comparação não
+              atravessa documentos diferentes.
+            </p>
+          </div>
+        </div>
+        <pre
+          class="code"
+        >posexplode(split(col(<span class="str">"raw_text"</span>), END_MARKER))</pre>
+      </div>
+    </section>
+
+    <section class="slide" id="s6">
+      <div class="slide-inner">
+        <div class="eyebrow">Normalização</div>
+        <h2>O bronze cria texto legível e texto de busca</h2>
+        <div class="three-col">
+          <div class="card">
+            <h3>text_original</h3>
+            <p>
+              Trecho aparado nas bordas, mantendo a forma original possível.
+            </p>
+          </div>
+          <div class="card">
+            <h3>text_normalized</h3>
+            <p>
+              Espaços repetidos viram um espaço só. Isso facilita regex e
+              leitura.
+            </p>
+          </div>
+          <div class="card">
+            <h3>match_text</h3>
+            <p>Versão em minúsculas usada pelo pré-filtro Spark.</p>
+          </div>
+        </div>
+        <pre
+          class="code"
+        >text_normalized = trim(regexp_replace(col(<span class="str">"raw_segment"</span>), r<span class="str">"\s+"</span>, <span class="str">" "</span>))
+match_text = lower(text_normalized)</pre>
+      </div>
+    </section>
+
+    <section class="slide invert" id="s7">
+      <div class="slide-inner narrow">
+        <div class="eyebrow">Ponto de performance</div>
+        <p class="quote">
+          Materializar bronze em Parquet evita reprocessar gzip bruto a cada
+          ação posterior.
+        </p>
+        <p class="lead">
+          O bronze é salvo em Parquet e recarregado para que as próximas etapas
+          não dependam mais da leitura e normalização do corpus bruto.
+        </p>
+      </div>
+    </section>
+
+    <section class="slide" id="s8">
+      <div class="slide-inner">
+        <div class="eyebrow">Pré-filtro Spark</div>
+        <h2><code>rlike</code> é a peneira grossa e barata</h2>
+        <div class="two-col">
+          <div class="card">
+            <h3>O que ele faz</h3>
+            <p>
+              Procura segmentos que parecem conter o padrão curado:
+              qualidade/verbo seguido de <code>como um/uma/uns/umas</code>.
+            </p>
+          </div>
+          <div class="card ok">
+            <h3>Por que importa</h3>
+            <p>
+              É executado pelo Spark/JVM, antes da UDF Python, reduzindo o
+              volume que passa para a extração detalhada.
+            </p>
+          </div>
+        </div>
+        <pre
+          class="code"
+        ><span class="kw">def</span> prefilter_como_article_ground_vehicle_bronze_dataframe(bronze_df):
+    <span class="kw">return</span> bronze_df.where(col(<span class="str">"match_text"</span>).rlike(_SPARK_PREFILTER_RE))</pre>
+      </div>
+    </section>
+
+    <section class="slide" id="s9">
+      <div class="slide-inner">
+        <div class="eyebrow">Regex do recorte</div>
+        <h2>O pré-filtro só aceita o padrão com artigo</h2>
+        <pre class="code">_SPARK_PREFILTER_RE =
+  r<span class="str">"\b(?:PALAVRA_CURADA)\s+como\s+(?:um|uma|uns|umas)\b"</span></pre>
+        <div class="two-col">
+          <div class="card ok">
+            <h3>Passa</h3>
+            <p><code>forte como um touro</code></p>
+            <p><code>caiu como uma luva</code></p>
+          </div>
+          <div class="card hot">
+            <h3>Fica fora</h3>
+            <p><code>claro como água</code></p>
+            <p><code>trabalha como advogado</code></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="s10">
+      <div class="slide-inner">
+        <div class="eyebrow">UDF de extração</div>
+        <h2>A UDF é a peneira fina</h2>
+        <ul class="list">
+          <li class="item">
+            <div class="badge">1</div>
+            <div>
+              <h3>Identifica</h3>
+              <p>Qualidade/verbo, conector e início do comparante.</p>
+            </div>
+          </li>
+          <li class="item">
+            <div class="badge">2</div>
+            <div>
+              <h3>Extrai</h3>
+              <p>
+                Comparante curto, posições no texto e trecho legível para
+                revisão.
+              </p>
+            </div>
+          </li>
+          <li class="item">
+            <div class="badge">3</div>
+            <div>
+              <h3>Filtra</h3>
+              <p>
+                Remove ruídos: URLs, termos genéricos, começo ruim, contexto
+                classificatório.
+              </p>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide" id="s11">
+      <div class="slide-inner">
+        <div class="eyebrow">Regex Python</div>
+        <h2>A UDF captura grupos nomeados</h2>
+        <pre class="code">_COMO_ARTICLE_GROUND_RE = re.compile(
+    rf<span class="str">"\b(?P&lt;ground&gt;{_GROUND_WORD})\s+"</span>
+    rf<span class="str">"(?P&lt;connector&gt;como\s+(?:um|uma|uns|umas))\b"</span>,
+    re.IGNORECASE,
+)</pre>
+        <div class="example">
+          Era <span class="mark">forte</span>
+          <span class="mark">como um</span> touro
+        </div>
+        <p>
+          <code>ground</code> é lido na apresentação como qualidade/verbo.
+          <code>connector</code> é o conector literal.
+        </p>
+      </div>
+    </section>
+
+    <section class="slide" id="s12">
+      <div class="slide-inner">
+        <div class="eyebrow">Comparante</div>
+        <h2>O comparante começa depois do artigo</h2>
+        <div class="example">
+          A ideia caiu como uma <span class="mark">luva</span> para o projeto.
+        </div>
+        <div class="two-col">
+          <div class="card">
+            <h3>Limites</h3>
+            <p>
+              Máximo de 5 tokens, parada em pontuação ou fronteira de segmento.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Agregação</h3>
+            <p>
+              O primeiro termo do comparante vira o lema principal para contar
+              imagens comparativas.
+            </p>
+          </div>
+        </div>
+        <pre class="code">MAX_VEHICLE_TOKENS = 5
+vehicle = _extract_vehicle(text_normalized, match.end(<span class="str">"connector"</span>))</pre>
+      </div>
+    </section>
+
+    <section class="slide" id="s13">
+      <div class="slide-inner">
+        <div class="eyebrow">Rejeição de ruído</div>
+        <h2>A UDF também decide o que não entra</h2>
+        <div class="three-col">
+          <div class="card hot">
+            <h3>Inícios ruins</h3>
+            <p>
+              <code>de</code>, <code>em</code>, <code>ele</code>,
+              <code>ela</code>, <code>é</code>
+            </p>
+          </div>
+          <div class="card hot">
+            <h3>Cabeças genéricas</h3>
+            <p>
+              <code>coisa</code>, <code>forma</code>, <code>tipo</code>,
+              <code>exemplo</code>
+            </p>
+          </div>
+          <div class="card hot">
+            <h3>Ruído textual</h3>
+            <p>
+              URLs, símbolos, percentuais, números e contexto classificatório.
+            </p>
+          </div>
+        </div>
+        <pre
+          class="code"
+        >reject_reason = _reject_reason(ground_text, vehicle, text_before)
+<span class="kw">if</span> reject_reason:
+    <span class="kw">continue</span></pre>
+      </div>
+    </section>
+
+    <section class="slide" id="s14">
+      <div class="slide-inner">
+        <div class="eyebrow">De lista Python para DataFrame</div>
+        <h2><code>explode</code> transforma candidatos em linhas</h2>
+        <pre
+          class="code"
+        >extract_rows = udf(extract_como_article_ground_vehicle_rows, schema)
+
+bronze_df.withColumn(
+    <span class="str">"candidate"</span>,
+    explode(extract_rows(...))
+).select(<span class="str">"candidate.*"</span>)</pre>
+        <div class="callout">
+          <p>
+            Um segmento pode gerar zero, um ou vários candidatos. Por isso a UDF
+            retorna uma lista e o Spark explode essa lista em linhas.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="s15">
+      <div class="slide-inner">
+        <div class="eyebrow">Exemplo completo</div>
+        <h2>Da linha bronze ao candidato final</h2>
+        <div class="example">
+          A ideia <span class="mark">caiu como uma luva</span> para o projeto.
+        </div>
+        <div class="fields">
+          <div class="field">
+            <div class="field-name">qualidade/verbo</div>
+            <div class="field-desc">caiu → lema cair</div>
+          </div>
+          <div class="field">
+            <div class="field-name">conector</div>
+            <div class="field-desc">como uma</div>
+          </div>
+          <div class="field">
+            <div class="field-name">comparante</div>
+            <div class="field-desc">luva → lema principal luva</div>
+          </div>
+          <div class="field">
+            <div class="field-name">candidate_full_text</div>
+            <div class="field-desc">A ideia caiu como uma luva</div>
+          </div>
+          <div class="field">
+            <div class="field-name">confidence</div>
+            <div class="field-desc">
+              confiança calculada por contexto e tamanho
+            </div>
+          </div>
+          <div class="field">
+            <div class="field-name">needs_review</div>
+            <div class="field-desc">marca casos que precisam de revisão</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="s16">
+      <div class="slide-inner">
+        <div class="eyebrow">Perguntas prováveis</div>
+        <h2>Respostas curtas</h2>
+        <div class="qa">
+          <div class="card">
+            <p>O bronze já é o dataset final?</p>
+            <p>
+              Não. Bronze é texto preparado. O dataset final começa depois da
+              UDF.
+            </p>
+          </div>
+          <div class="card">
+            <p>O pré-filtro perde casos válidos?</p>
+            <p>
+              Sim, de propósito. O recorte prioriza precisão e custo controlado.
+            </p>
+          </div>
+          <div class="card">
+            <p>A UDF é distribuída?</p>
+            <p>
+              Sim, roda nos workers do Spark, mas com overhead Python. Por isso
+              vem depois do <code>rlike</code>.
+            </p>
+          </div>
+          <div class="card">
+            <p>Por que não fazer tudo em Spark SQL?</p>
+            <p>
+              Porque offsets, rejeições e montagem do candidato são mais claros
+              em Python.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide invert" id="s17">
+      <div class="slide-inner narrow">
+        <div class="eyebrow">Resumo de 30 segundos</div>
+        <p class="quote">Bronze organiza. Spark reduz. A UDF entende.</p>
+        <p class="lead">
+          O pipeline transforma texto bruto em segmentos rastreáveis, usa regex
+          nativo para filtrar barato e aplica Python apenas para extrair
+          candidatos com qualidade, comparante, posições e auditoria.
+        </p>
+      </div>
+    </section>
+
+    <div id="counter">1 / 17</div>
+
+    <script>
+      (function () {
+        const slides = Array.from(document.querySelectorAll(".slide"));
+        const counter = document.getElementById("counter");
+        let current = 0;
+
+        function go(i) {
+          current = Math.max(0, Math.min(slides.length - 1, i));
+          slides[current].scrollIntoView({ behavior: "smooth" });
+        }
+
+        document.addEventListener("keydown", function (event) {
+          if (
+            event.key === "ArrowRight" ||
+            event.key === "ArrowDown" ||
+            event.key === " "
+          ) {
+            event.preventDefault();
+            go(current + 1);
+          }
+          if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+            event.preventDefault();
+            go(current - 1);
+          }
+        });
+
+        const observer = new IntersectionObserver(
+          function (entries) {
+            entries.forEach(function (entry) {
+              if (!entry.isIntersecting) return;
+              current = slides.indexOf(entry.target);
+              counter.textContent = current + 1 + " / " + slides.length;
+            });
+          },
+          { threshold: 0.62 },
+        );
+
+        slides.forEach(function (slide) {
+          observer.observe(slide);
+        });
+      })();
+    </script>
+  </body>
+</html>
