@@ -6,14 +6,17 @@ How the engineering skills should consume this repo's domain documentation when 
 
 This is a single-context repo.
 
-Current domain context material lives under `docs/context/`. Treat those files as the repo's domain context until a root `CONTEXT.md` exists.
+Current domain context material lives in the root `CONTEXT.md`. Supporting
+background context lives under `docs/context/`; use it for corpus facts and
+historical adaptation rationale, but let root `CONTEXT.md` define the active
+project vocabulary.
 
 ADRs live under `docs/adr/`. Read ADRs that touch the area you're about to work in.
 
 ## Before exploring, read these
 
-- **`docs/context/`** — read the context files relevant to the topic.
-- **`CONTEXT.md`** at the repo root, if it exists.
+- **`CONTEXT.md`** at the repo root.
+- **`docs/context/`**, when the task needs corpus facts or adaptation rationale.
 - **`docs/adr/`**, if it exists — read ADRs that touch the area you're about to work in.
 
 If any of these files don't exist, proceed silently. Don't flag their absence; don't suggest creating them upfront. The producer skill (`/grill-with-docs`) creates them lazily when terms or decisions actually get resolved.

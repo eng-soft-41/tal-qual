@@ -1,16 +1,23 @@
-## Local `brwac-clean` Dataset Context
+# brWaC Clean Corpus Context
 
-This project uses the Hugging Face dataset copy `nlpufg/brwac`, stored locally under:
+This document records the local corpus facts and noise patterns that matter for
+the current Tal Qual workflow.
 
-```txt
+## Local Dataset
+
+The project uses the Hugging Face dataset copy `nlpufg/brwac`, stored locally
+under:
+
+```text
 data/raw/
 ```
 
-This local version is the **`brwac-clean`** configuration. It contains plain text examples, not the full annotated CoNLL/Moses release described in the original brWaC paper.
+The local version is the `brwac-clean` configuration. It contains plain text
+examples, not the full annotated release from the original brWaC paper.
 
-### Local Structure
+Local structure:
 
-```txt
+```text
 data/
   file_names.txt
   raw/
@@ -19,104 +26,115 @@ data/
     brwac-clean-12.txt.gz
 ```
 
-### Local Metadata
+Metadata from the local copy:
 
 - Dataset config: `brwac-clean`
 - Version: `1.0.0`
 - Split: `train`
-- Number of examples: **3,530,796**
-- Features:
-  - `id: int64`
-  - `text: string`
-- Compressed data files: **12 `.txt.gz` files**
-- Local compressed size: about **2.6 GB**
-- Text size in metadata: about **7.4 GB**
-- Total size in metadata: about **10.2 GB**
+- Number of examples: `3,530,796`
+- Features: `id: int64`, `text: string`
+- Compressed data files: 12 `.txt.gz` files
+- Local compressed size: about 2.6 GB
+- Text size in metadata: about 7.4 GB
+- Total size in metadata: about 10.2 GB
 
-### Text Format Notes
+## Text Format
 
-The files can be streamed directly as gzip text files. Full decompression is not required for normal processing.
+The files can be streamed directly as gzip text files. Full decompression is
+not required for normal processing.
 
-The local Hugging Face loader reads the files with `gzip.open(...)` and converts `<END>` markers into newline boundaries:
+`<END>` markers should be treated as hard segment boundaries. The bronze layer
+splits these markers before candidate extraction so a candidate cannot span
+unrelated corpus fragments.
 
-```python
-line.replace("<END>", "\n").rstrip()
+The core bronze fields are:
+
+```text
+source_file
+original_line_id
+segment_id
+text_original
+text_normalized
+match_text
 ```
 
-For this project, `<END>` should be treated as a paragraph or document-boundary marker during normalization.
+## Why Spark Still Matters
 
-### Relevance for This Project
+The corpus is large enough that Spark remains useful for:
 
-This corpus is suitable for a Big Data / Spark SQL project because it is:
+- reading compressed shards;
+- splitting text into **Bronze Segments**;
+- applying a native regex prefilter;
+- running extraction only on plausible rows;
+- writing Parquet and compact CSV **Analysis Outputs**.
 
-- large enough to justify Spark processing;
-- stored as multiple compressed files;
-- line-oriented and easy to ingest with Spark text readers;
-- noisy enough to require filtering and rule refinement;
-- rich in explicit comparison markers such as `como`, `feito`, `parece`, `que nem`, `igual a`, and `tal qual`.
+The current notebook uses a native Spark `rlike` prefilter before the Python
+UDF. This is the reason the full-shard workflow is fast enough for iteration.
 
-### Initial Scan Findings
+## Corpus Noise That Matters
 
-A first-pass scan over comparison connectors found many matches, but with substantial noise.
+Raw `como` is extremely frequent and noisy. Earlier scans showed many matches
+for broad connectors, but most are not useful for the first visualization
+dataset.
 
-On a 500k-line sample:
+Common noise categories:
 
-| Connector | Count | Per 100k lines |
-|---|---:|---:|
-| `como` | 941,724 | 188,344.8 |
-| `parece` | 60,884 | 12,176.8 |
-| `feito` | 50,633 | 10,126.6 |
-| `que nem` | 7,768 | 1,553.6 |
-| `igual a` | 6,625 | 1,325.0 |
-| `tal qual` | 1,183 | 236.6 |
+- classification or role statements: `trabalha como advogado`,
+  `conhecido como X`;
+- examples: `como a flauta, a viola`;
+- additive uses: `assim como`;
+- temporal or habitual uses: `como todos os anos`;
+- procedural clauses: `Como se dará...`;
+- opinion or appearance: `parece melhor`, `parece provável`;
+- participial uses: `feito por`, `filme feito em 1979`;
+- literal comparisons that are valid candidates but not necessarily figurative.
 
-Total first-pass matches on 500k lines: **1,068,817**.
+These findings justify the current narrow extraction contract.
 
-### Second-stage Filtering
+## Relevance To Current Vehicle Filtering
 
-A narrower second-stage scan kept higher-value comparison patterns such as:
+Even after narrowing to `GROUND como artigo VEHICLE`, the corpus can produce
+bad or weak **Vehicle Text**. Future filters should pay attention to:
 
-- `como um/uma`
-- `como se`
-- `tal qual`
-- `que nem`
-- `igual a/ao/à/aos/às`
-- `parece um/uma`
-- `feito um/uma`
+- generic heads: `coisa`, `forma`, `tipo`, `espécie`, `parte`, `meio`,
+  `processo`, `exemplo`, `tema`;
+- stopword or pronoun starts: `de`, `em`, `o`, `a`, `ele`, `ela`, `todo`;
+- role/classification left context: `usado`, `utilizado`, `conhecido`,
+  `tratado`, `considerado`, `definido`, `classificado`, `entendido`;
+- URL, symbol, percentage, and numeric noise;
+- overlong vehicle tails that should be rejected rather than silently
+  truncated;
+- discourse continuations that start with plausible words but do not form a
+  useful comparison image.
 
-It excluded common noisy contexts such as:
+## Current Full-Shard Target
 
-- `assim como`
-- `como por exemplo`
-- `como todos/todas/todo/toda`
-- `feito por`
+The current canonical full-shard target is:
 
-On the same 500k-line scale:
+```text
+data/raw/brwac-clean-1.txt.gz
+```
 
-| Pattern | Count | Per 100k lines |
-|---|---:|---:|
-| `como um/uma` | 66,950 | 13,390.0 |
-| `como se` | 30,095 | 6,019.0 |
-| `que nem` | 7,748 | 1,549.6 |
-| `igual a` | 6,614 | 1,322.8 |
-| `parece um/uma` | 2,699 | 539.8 |
-| `feito um/uma` | 2,548 | 509.6 |
-| `tal qual` | 1,181 | 236.2 |
+The preferred notebook configuration observed locally is:
 
-Total second-stage matches on 500k lines: **117,835**.
+```text
+TAL_QUAL_SPARK_MASTER=local[4]
+TAL_QUAL_SPARK_PARALLELISM=4
+TAL_QUAL_SPARK_SHUFFLE_PARTITIONS=4
+```
 
-The second-stage filter kept about **11%** of the raw first-pass matches while preserving a large candidate pool for sampling, annotation, and rule refinement.
+This configuration was faster than local 5 or 6 worker variants during recent
+full-shard runs.
 
-### Known Noise Categories
+## Future Use
 
-The corpus contains many non-figurative uses of comparison markers. Common noise categories include:
+Use this context when improving:
 
-- `classification`: `trabalha como advogado`, `conhecido como X`
-- `example`: `como a flauta, a viola`
-- `additive`: `assim como`
-- `temporal_or_habitual`: `como todos os anos`
-- `procedural`: `Como se dará...`
-- `opinion_or_appearance`: `parece melhor`, `parece provável`
-- `participle`: `feito por`, `filme feito em 1979`
-- `literal_comparison`: explicit comparison but not figurative
-- `candidate_simile`: likely figurative comparison
+- **Vehicle Text** rejection rules;
+- native Spark prefilters;
+- quality review samples;
+- **Analysis Outputs** that explain corpus noise and extraction confidence.
+
+Do not use this context to broaden the supported connector set before the
+current como-article workflow has stronger vehicle filtering and WebApp-ready
+outputs.

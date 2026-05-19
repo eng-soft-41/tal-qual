@@ -13,5 +13,8 @@ services:
       - "$PWD:/home/jovyan/work"
     environment:
       - JUPYTER_ENABLE_LAB=yes
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - TAL_QUAL_RAW_CORPUS_INPUT=${TAL_QUAL_RAW_CORPUS_INPUT:-data/raw/brwac-clean-1.txt.gz}
+      - TAL_QUAL_BRONZE_PATH=${TAL_QUAL_BRONZE_PATH:-data/bronze/brwac_segments}
     command: >
       start-notebook.sh --NotebookApp.token='' --NotebookApp.password=''
