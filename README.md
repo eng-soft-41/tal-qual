@@ -23,6 +23,16 @@ caiu como uma luva
 voar como um avião
 ```
 
+## Presentation Pages
+
+The Big Data class presentation is available as static HTML under `docs/`.
+When GitHub Pages is enabled for the `main` branch `/docs` folder, use:
+
+- Project presentation:
+  `https://eng-soft-41.github.io/tal-qual/bigdata-presentation-slides.html`
+- Technical pipeline support:
+  `https://eng-soft-41.github.io/tal-qual/technical-pipeline-slides.html`
+
 ## Local Python Workflow
 
 UV is the expected local Python workflow for setup and tests. From the repo
